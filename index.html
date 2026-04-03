@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>フォトバトル - 写真投票アプリ</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">📸 フォトバトル</div>
+      <nav class="nav">
+        <button class="nav-btn active" data-view="gallery">ギャラリー</button>
+        <button class="nav-btn" data-view="upload">投稿する</button>
+        <button class="nav-btn" data-view="ranking">ランキング</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <!-- Gallery View -->
+    <section id="view-gallery" class="view active">
+      <div class="view-header">
+        <h2>みんなの写真</h2>
+        <div class="sort-controls">
+          <label>並び替え：</label>
+          <select id="sort-select">
+            <option value="votes">投票数順</option>
+            <option value="newest">新しい順</option>
+            <option value="oldest">古い順</option>
+          </select>
+        </div>
+      </div>
+      <div id="gallery" class="gallery">
+        <div class="empty-state" id="gallery-empty">
+          <p>📷</p>
+          <p>まだ写真がありません。<br>最初の写真を投稿してみましょう！</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Upload View -->
+    <section id="view-upload" class="view">
+      <div class="upload-card">
+        <h2>写真を投稿する</h2>
+
+        <div class="form-group">
+          <label for="uploader-name">あなたの名前</label>
+          <input type="text" id="uploader-name" placeholder="名前を入力" maxlength="30" />
+        </div>
+
+        <div class="form-group">
+          <label for="photo-title">写真のタイトル</label>
+          <input type="text" id="photo-title" placeholder="タイトルを入力" maxlength="50" />
+        </div>
+
+        <div class="form-group">
+          <label>写真を選ぶ</label>
+          <div class="drop-zone" id="drop-zone">
+            <input type="file" id="photo-input" accept="image/*" hidden />
+            <div class="drop-zone-inner" id="drop-zone-inner">
+              <span class="drop-icon">🖼️</span>
+              <p>クリックまたはドラッグ&ドロップ</p>
+              <p class="drop-hint">JPG, PNG, GIF, WEBP 対応</p>
+            </div>
+            <img id="preview-img" class="preview-img hidden" alt="プレビュー" />
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button id="submit-btn" class="btn btn-primary" disabled>投稿する</button>
+        </div>
+
+        <p id="upload-message" class="upload-message hidden"></p>
+      </div>
+    </section>
+
+    <!-- Ranking View -->
+    <section id="view-ranking" class="view">
+      <div class="view-header">
+        <h2>ランキング</h2>
+      </div>
+      <div id="ranking-list" class="ranking-list">
+        <div class="empty-state" id="ranking-empty">
+          <p>🏆</p>
+          <p>まだランキングデータがありません。</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Toast -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

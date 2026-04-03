@@ -29,12 +29,24 @@
         <div class="sort-controls">
           <label>並び替え：</label>
           <select id="sort-select">
-            <option value="votes">投票数順</option>
+            <option value="score">得点順</option>
             <option value="newest">新しい順</option>
             <option value="oldest">古い順</option>
           </select>
         </div>
       </div>
+
+      <!-- Voted banner (shown after voting) -->
+      <div id="voted-banner" class="voted-banner hidden">
+        ✅ 投票が完了しています。ランキングを確認しましょう！
+      </div>
+
+      <!-- Voting instructions (shown before voting) -->
+      <div id="vote-instructions" class="vote-instructions">
+        <span class="inst-icon">🗳️</span>
+        気に入った写真を <strong>最大5枚</strong> 選び、それぞれ <strong>1〜5点</strong> の得点をつけて投票してください。
+      </div>
+
       <div id="gallery" class="gallery">
         <div class="empty-state" id="gallery-empty">
           <p>📷</p>
@@ -93,6 +105,17 @@
     </section>
 
   </main>
+
+  <!-- Voting Panel (sticky bottom) -->
+  <div id="vote-panel" class="vote-panel hidden">
+    <div class="vote-panel-inner">
+      <div class="vote-panel-status">
+        <span id="vote-panel-count">0</span><span class="vote-panel-max"> / 5 枚選択中</span>
+      </div>
+      <div id="vote-panel-chips" class="vote-panel-chips"></div>
+      <button id="vote-submit-btn" class="btn btn-vote" disabled>投票を送信</button>
+    </div>
+  </div>
 
   <!-- Toast -->
   <div id="toast" class="toast hidden"></div>

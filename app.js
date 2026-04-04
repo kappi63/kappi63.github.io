@@ -364,32 +364,34 @@ dropZone.addEventListener('drop', (e) => {
   else showToast('画像ファイルを選んでください');
 });
 
-// Resize & compress image to keep localStorage usage low (max 1200px wide, JPEG 0.82)
-function compressImage(file) {
-  return new Promise((resolve) => {
-    const MAX_W = 1200;
-    const QUALITY = 0.82;
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      let w = img.width, h = img.height;
-      if (w > MAX_W) { h = Math.round(h * MAX_W / w); w = MAX_W; }
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', QUALITY));
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      // fallback: read as-is
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
-      reader.readAsDataURL(file);
-    };
-    img.src = url;
-  });
+// Resize & compress image to keep localStorage usage low (max 1200px on longest side, JPEG 0.82)
+// Uses createImageBitmap with imageOrientation:'from-image' so EXIF rotation is applied
+// before drawing to canvas — this fixes portrait photos taken on smartphones.
+async function compressImage(file) {
+  const MAX_SIDE = 1200;
+  const QUALITY  = 0.82;
+
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  } catch {
+    // Fallback for browsers that don't support the option
+    bitmap = await createImageBitmap(file);
+  }
+
+  let w = bitmap.width, h = bitmap.height;
+  if (w > MAX_SIDE || h > MAX_SIDE) {
+    const ratio = Math.min(MAX_SIDE / w, MAX_SIDE / h);
+    w = Math.round(w * ratio);
+    h = Math.round(h * ratio);
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width  = w;
+  canvas.height = h;
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  return canvas.toDataURL('image/jpeg', QUALITY);
 }
 
 async function setPreview(file) {

@@ -8,7 +8,6 @@
 </head>
 <body>
 
-  <!-- Header -->
   <header class="header">
     <div class="header-inner">
       <div class="logo">📸 フォトバトル</div>
@@ -36,15 +35,22 @@
         </div>
       </div>
 
-      <!-- Voted banner (shown after voting) -->
-      <div id="voted-banner" class="voted-banner hidden">
-        ✅ 投票が完了しています。ランキングを確認しましょう！
+      <!-- 投票締め切り後バナー -->
+      <div id="closed-banner" class="closed-banner hidden">
+        🔒 投票は締め切られました。ランキングタブで結果を確認しましょう！
       </div>
 
-      <!-- Voting instructions (shown before voting) -->
+      <!-- 投票前の案内（名前入力付き） -->
       <div id="vote-instructions" class="vote-instructions">
-        <span class="inst-icon">🗳️</span>
-        気に入った写真を <strong>最大5枚</strong> 選び、それぞれ <strong>1〜5点</strong> の得点をつけて投票してください。
+        <div class="inst-name-row">
+          <label for="voter-name-input">お名前：</label>
+          <input type="text" id="voter-name-input" placeholder="名前を入力してください" maxlength="30" autocomplete="off" />
+          <span id="voter-name-status" class="voter-name-status"></span>
+        </div>
+        <div class="inst-text">
+          <span class="inst-icon">🗳️</span>
+          気に入った写真を <strong>最大5枚</strong> 選び、それぞれ <strong>1〜5点</strong> の得点をつけて投票してください。
+        </div>
       </div>
 
       <div id="gallery" class="gallery">
@@ -59,17 +65,14 @@
     <section id="view-upload" class="view">
       <div class="upload-card">
         <h2>写真を投稿する</h2>
-
         <div class="form-group">
           <label for="uploader-name">あなたの名前</label>
           <input type="text" id="uploader-name" placeholder="名前を入力" maxlength="30" />
         </div>
-
         <div class="form-group">
           <label for="photo-title">写真のタイトル</label>
           <input type="text" id="photo-title" placeholder="タイトルを入力" maxlength="50" />
         </div>
-
         <div class="form-group">
           <label>写真を選ぶ</label>
           <div class="drop-zone" id="drop-zone">
@@ -82,11 +85,9 @@
             <img id="preview-img" class="preview-img hidden" alt="プレビュー" />
           </div>
         </div>
-
         <div class="form-actions">
           <button id="submit-btn" class="btn btn-primary" disabled>投稿する</button>
         </div>
-
         <p id="upload-message" class="upload-message hidden"></p>
       </div>
     </section>
@@ -106,18 +107,18 @@
 
   </main>
 
-  <!-- Voting Panel (sticky bottom) -->
+  <!-- Vote Panel (sticky bottom) -->
   <div id="vote-panel" class="vote-panel hidden">
     <div class="vote-panel-inner">
       <div class="vote-panel-status">
-        <span id="vote-panel-count">0</span><span class="vote-panel-max"> / 5 枚選択中</span>
+        <div id="vote-panel-name" class="vote-panel-voter"></div>
+        <div><span id="vote-panel-count">0</span><span class="vote-panel-max"> / 5 枚選択中</span></div>
       </div>
       <div id="vote-panel-chips" class="vote-panel-chips"></div>
       <button id="vote-submit-btn" class="btn btn-vote" disabled>投票を送信</button>
     </div>
   </div>
 
-  <!-- Toast -->
   <div id="toast" class="toast hidden"></div>
 
   <script src="app.js"></script>

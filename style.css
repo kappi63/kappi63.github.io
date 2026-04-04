@@ -102,30 +102,75 @@ body {
 
 /* ===== Vote Instructions ===== */
 .vote-instructions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
   background: rgba(124,58,237,0.1);
   border: 1px solid rgba(124,58,237,0.3);
   border-radius: 10px;
-  padding: 12px 16px;
+  padding: 14px 16px;
   margin-bottom: 20px;
   font-size: 0.88rem;
   color: #c4b5fd;
   line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inst-name-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.inst-name-row label {
+  font-size: 0.88rem;
+  color: #c4b5fd;
+  white-space: nowrap;
+}
+
+.inst-name-row input[type="text"] {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(124,58,237,0.5);
+  color: var(--text);
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  outline: none;
+  flex: 1;
+  min-width: 160px;
+  max-width: 260px;
+  transition: border-color 0.2s;
+}
+
+.inst-name-row input[type="text"]:focus {
+  border-color: var(--accent-light);
+}
+
+.voter-name-status {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.status-ok    { color: var(--success); }
+.status-error { color: var(--danger); }
+
+.inst-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .inst-icon { font-size: 1.2rem; flex-shrink: 0; }
 
-/* ===== Voted Banner ===== */
-.voted-banner {
-  background: rgba(16,185,129,0.1);
-  border: 1px solid rgba(16,185,129,0.35);
+/* ===== Closed Banner ===== */
+.closed-banner {
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.35);
   border-radius: 10px;
   padding: 12px 16px;
   margin-bottom: 20px;
   font-size: 0.88rem;
-  color: #6ee7b7;
+  color: #fca5a5;
 }
 
 /* ===== Sort Controls ===== */
@@ -520,6 +565,75 @@ body {
 
 .ranking-votes { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
 
+/* ===== Admin Section (voter list + close button) ===== */
+.admin-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.voter-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.voter-list-header strong { color: var(--text); }
+
+.closed-header { color: #fca5a5; }
+.closed-header strong { color: #fca5a5; }
+
+.voter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.voter-chip {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.no-voters { font-size: 0.82rem; color: var(--text-muted); }
+
+.btn-close {
+  background: rgba(239,68,68,0.15);
+  border: 1px solid rgba(239,68,68,0.4);
+  color: #fca5a5;
+  padding: 7px 16px;
+  font-size: 0.85rem;
+}
+
+.btn-close:hover {
+  background: rgba(239,68,68,0.25);
+  box-shadow: 0 0 10px rgba(239,68,68,0.2);
+}
+
+.btn-reopen {
+  background: rgba(16,185,129,0.12);
+  border: 1px solid rgba(16,185,129,0.35);
+  color: #6ee7b7;
+  padding: 7px 16px;
+  font-size: 0.85rem;
+}
+
+.btn-reopen:hover {
+  background: rgba(16,185,129,0.22);
+}
+
 /* ===== Vote Panel (sticky bottom) ===== */
 .vote-panel {
   position: fixed;
@@ -546,6 +660,15 @@ body {
 .vote-panel-status {
   font-size: 0.9rem;
   white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vote-panel-voter {
+  font-size: 0.82rem;
+  color: #c4b5fd;
+  font-weight: 600;
 }
 
 .vote-panel-status span:first-child {

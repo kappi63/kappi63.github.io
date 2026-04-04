@@ -722,6 +722,38 @@ body {
   flex-shrink: 0;
 }
 
+.vote-panel-hint {
+  width: 100%;
+  font-size: 0.82rem;
+  color: #fca5a5;
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.3);
+  border-radius: 8px;
+  padding: 6px 12px;
+  order: 10;
+}
+
+.chip-unset {
+  border-color: rgba(239,68,68,0.5) !important;
+  background: rgba(239,68,68,0.08) !important;
+}
+
+.chip-unset .panel-chip-pts {
+  color: #fca5a5 !important;
+  font-size: 0.75rem;
+}
+
+.point-selector.needs-points {
+  background: rgba(239,68,68,0.07);
+  border: 1px solid rgba(239,68,68,0.3);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.point-selector.needs-points .point-selector-label {
+  color: #fca5a5;
+}
+
 .btn-vote {
   background: var(--accent);
   color: #fff;

@@ -152,12 +152,13 @@ function renderGallery() {
 
     let pointSelectorHtml = '';
     if (isSelected && canSelect) {
+      const needsPoints = assignedPts === 0;
       const btns = [1,2,3,4,5].map(p =>
         `<button class="point-btn${assignedPts === p ? ' active' : ''}" data-id="${photo.id}" data-pts="${p}">${p}</button>`
       ).join('');
       pointSelectorHtml = `
-        <div class="point-selector">
-          <div class="point-selector-label">得点を選ぶ：</div>
+        <div class="point-selector${needsPoints ? ' needs-points' : ''}">
+          <div class="point-selector-label">${needsPoints ? '⚠️ 得点を選んでください：' : '得点を選ぶ：'}</div>
           ${btns}
         </div>`;
     }
@@ -243,16 +244,30 @@ function updateVotePanel() {
   const allAssigned = entries.every(([, pts]) => pts > 0);
   voteSubmitBtn.disabled = !allAssigned;
 
+  // Show hint when some photos still need points
+  let hint = votePanel.querySelector('.vote-panel-hint');
+  if (!allAssigned) {
+    if (!hint) {
+      hint = document.createElement('div');
+      hint.className = 'vote-panel-hint';
+      votePanel.querySelector('.vote-panel-inner').insertBefore(hint, voteSubmitBtn);
+    }
+    const remaining = entries.filter(([, pts]) => pts === 0).length;
+    hint.textContent = `⚠️ あと${remaining}枚の写真に得点（1〜5点）をつけてください`;
+  } else if (hint) {
+    hint.remove();
+  }
+
   votePanelChips.innerHTML = '';
   entries.forEach(([id, pts]) => {
     const photo = photos.find(p => p.id === id);
     if (!photo) return;
     const chip = document.createElement('div');
-    chip.className = 'panel-chip';
+    chip.className = 'panel-chip' + (pts === 0 ? ' chip-unset' : '');
     chip.innerHTML = `
       <img class="panel-chip-thumb" src="${photo.dataUrl}" alt="" />
       <span class="panel-chip-title">${escHtml(photo.title)}</span>
-      <span class="panel-chip-pts">${pts > 0 ? pts + '点' : '?点'}</span>`;
+      <span class="panel-chip-pts">${pts > 0 ? pts + '点' : '得点未設定'}</span>`;
     votePanelChips.appendChild(chip);
   });
 }

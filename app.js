@@ -326,6 +326,7 @@ function renderRanking() {
         <div class="admin-btns">
           <button id="close-voting-btn" class="btn btn-close">🔒 投票を締め切る</button>
           <button id="reset-btn" class="btn btn-reset">🗑️ 集計をリセット</button>
+          <button id="new-round-btn" class="btn btn-new-round">🔄 新ラウンド開始</button>
         </div>
       </div>
       <div class="voter-chips">${
@@ -340,6 +341,7 @@ function renderRanking() {
         <div class="admin-btns">
           <button id="reopen-voting-btn" class="btn btn-reopen">🔓 投票を再開する</button>
           <button id="reset-btn" class="btn btn-reset">🗑️ 集計をリセット</button>
+          <button id="new-round-btn" class="btn btn-new-round">🔄 新ラウンド開始</button>
         </div>
       </div>
       <div class="voter-chips">${
@@ -398,6 +400,36 @@ function renderRanking() {
       resetVotes();
     }
   });
+
+  document.getElementById('new-round-btn')?.addEventListener('click', () => {
+    if (confirm('新ラウンドを開始しますか？\n\n・写真がすべて削除されます\n・投票記録・得点もすべて削除されます\n\nこの操作は取り消せません。')) {
+      startNewRound();
+    }
+  });
+}
+
+function startNewRound() {
+  // Clear everything
+  photos = [];
+  voters = [];
+  savePhotos(photos);
+  saveVoters(voters);
+  reopenVoting();
+
+  pendingBallot = {};
+  voterName = '';
+  voterNameInput.value = '';
+  voterNameStatus.textContent = '';
+  voterNameStatus.className = 'voter-name-status';
+  votePanel.classList.add('hidden');
+
+  showToast('🔄 新ラウンドを開始しました！写真を投稿してください');
+  renderRanking();
+  renderGallery();
+
+  // Switch to upload tab
+  navBtns.forEach(b => b.classList.toggle('active', b.dataset.view === 'upload'));
+  views.forEach(v => v.classList.toggle('active', v.id === 'view-upload'));
 }
 
 function resetVotes() {

@@ -8,7 +8,23 @@ function loadPhotos() {
 }
 
 function savePhotos(photos) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(photos));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(photos));
+  } catch (e) {
+    // localStorage quota exceeded — remove oldest photo and retry once
+    if (photos.length > 1) {
+      const sorted = [...photos].sort((a, b) => a.createdAt - b.createdAt);
+      const trimmed = photos.filter(p => p.id !== sorted[0].id);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+        showToast('⚠️ 容量不足のため古い写真を1枚削除しました');
+      } catch (_) {
+        showToast('⚠️ 保存に失敗しました。ブラウザの容量が足りません');
+      }
+    } else {
+      showToast('⚠️ 保存に失敗しました。ブラウザの容量が足りません');
+    }
+  }
 }
 
 function hasVoted() {
@@ -104,7 +120,7 @@ function renderGallery() {
   galleryEmpty.style.display = 'none';
 
   list.forEach(photo => {
-    const isSelected  = !!pendingBallot[photo.id];
+    const isSelected  = photo.id in pendingBallot;  // fix: 0 is falsy so use `in`
     const assignedPts = pendingBallot[photo.id] || 0;
     const maxReached  = Object.keys(pendingBallot).length >= 5;
 
@@ -335,7 +351,7 @@ dropZone.addEventListener('click', (e) => {
 });
 
 photoInput.addEventListener('change', () => {
-  if (photoInput.files[0]) setPreview(photoInput.files[0]);
+  if (photoInput.files[0]) setPreview(photoInput.files[0]);  // async, intentionally not awaited
 });
 
 dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragging'); });
@@ -344,20 +360,47 @@ dropZone.addEventListener('drop', (e) => {
   e.preventDefault();
   dropZone.classList.remove('dragging');
   const file = e.dataTransfer.files[0];
-  if (file && file.type.startsWith('image/')) setPreview(file);
+  if (file && file.type.startsWith('image/')) setPreview(file);  // async, intentionally not awaited
   else showToast('画像ファイルを選んでください');
 });
 
-function setPreview(file) {
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    pendingFile = e.target.result;
-    previewImg.src = pendingFile;
-    previewImg.classList.remove('hidden');
-    dropZoneInner.classList.add('hidden');
-    checkSubmitReady();
-  };
-  reader.readAsDataURL(file);
+// Resize & compress image to keep localStorage usage low (max 1200px wide, JPEG 0.82)
+function compressImage(file) {
+  return new Promise((resolve) => {
+    const MAX_W = 1200;
+    const QUALITY = 0.82;
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.width, h = img.height;
+      if (w > MAX_W) { h = Math.round(h * MAX_W / w); w = MAX_W; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', QUALITY));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      // fallback: read as-is
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.readAsDataURL(file);
+    };
+    img.src = url;
+  });
+}
+
+async function setPreview(file) {
+  dropZoneInner.querySelector('p').textContent = '読み込み中...';
+  const dataUrl = await compressImage(file);
+  pendingFile = dataUrl;
+  previewImg.src = dataUrl;
+  previewImg.classList.remove('hidden');
+  dropZoneInner.classList.add('hidden');
+  dropZoneInner.querySelector('p').textContent = 'クリックまたはドラッグ&ドロップ';
+  checkSubmitReady();
 }
 
 submitBtn.addEventListener('click', () => {

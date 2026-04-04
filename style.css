@@ -182,9 +182,10 @@ body {
 
 .photo-card img {
   width: 100%;
-  aspect-ratio: 4/3;
-  object-fit: cover;
+  height: 220px;
+  object-fit: contain;
   display: block;
+  background: #111;
 }
 
 /* Select overlay on image */
@@ -494,7 +495,8 @@ body {
   width: 56px;
   height: 56px;
   border-radius: 8px;
-  object-fit: cover;
+  object-fit: contain;
+  background: #111;
   flex-shrink: 0;
 }
 

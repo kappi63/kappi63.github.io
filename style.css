@@ -587,6 +587,12 @@ body {
   color: var(--text-muted);
 }
 
+.admin-btns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .voter-list-header strong { color: var(--text); }
 
 .closed-header { color: #fca5a5; }
@@ -630,8 +636,19 @@ body {
   font-size: 0.85rem;
 }
 
-.btn-reopen:hover {
-  background: rgba(16,185,129,0.22);
+.btn-reopen:hover { background: rgba(16,185,129,0.22); }
+
+.btn-reset {
+  background: rgba(100,116,139,0.12);
+  border: 1px solid rgba(100,116,139,0.35);
+  color: var(--text-muted);
+  padding: 7px 16px;
+  font-size: 0.85rem;
+}
+
+.btn-reset:hover {
+  background: rgba(100,116,139,0.25);
+  color: var(--text);
 }
 
 /* ===== Vote Panel (sticky bottom) ===== */

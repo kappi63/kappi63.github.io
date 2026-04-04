@@ -323,7 +323,10 @@ function renderRanking() {
     adminSection.innerHTML = `
       <div class="voter-list-header">
         <span>投票済み：<strong>${voters.length}人</strong></span>
-        <button id="close-voting-btn" class="btn btn-close">🔒 投票を締め切る</button>
+        <div class="admin-btns">
+          <button id="close-voting-btn" class="btn btn-close">🔒 投票を締め切る</button>
+          <button id="reset-btn" class="btn btn-reset">🗑️ 集計をリセット</button>
+        </div>
       </div>
       <div class="voter-chips">${
         voters.length === 0
@@ -334,7 +337,10 @@ function renderRanking() {
     adminSection.innerHTML = `
       <div class="voter-list-header closed-header">
         <span>🔒 投票終了　参加者：<strong>${voters.length}人</strong></span>
-        <button id="reopen-voting-btn" class="btn btn-reopen">🔓 投票を再開する</button>
+        <div class="admin-btns">
+          <button id="reopen-voting-btn" class="btn btn-reopen">🔓 投票を再開する</button>
+          <button id="reset-btn" class="btn btn-reset">🗑️ 集計をリセット</button>
+        </div>
       </div>
       <div class="voter-chips">${
         voters.map(v => `<span class="voter-chip">${escHtml(v.name)}</span>`).join('')
@@ -370,7 +376,7 @@ function renderRanking() {
   }
 
   document.getElementById('close-voting-btn')?.addEventListener('click', () => {
-    if (confirm(`投票を締め切りますか？\n締め切ると新しい投票ができなくなります。`)) {
+    if (confirm('投票を締め切りますか？\n締め切ると新しい投票ができなくなります。')) {
       closeVoting();
       showToast('🔒 投票を締め切りました');
       renderRanking();
@@ -386,6 +392,35 @@ function renderRanking() {
       renderGallery();
     }
   });
+
+  document.getElementById('reset-btn')?.addEventListener('click', () => {
+    if (confirm('投票データと得点をすべてリセットしますか？\n\n・全員の投票記録が削除されます\n・各写真の得点が0に戻ります\n・写真自体は削除されません\n\nこの操作は取り消せません。')) {
+      resetVotes();
+    }
+  });
+}
+
+function resetVotes() {
+  // Reset scores on all photos
+  photos.forEach(p => { p.score = 0; p.voteCount = 0; });
+  savePhotos(photos);
+
+  // Clear voters and closed state
+  voters = [];
+  saveVoters(voters);
+  reopenVoting();
+
+  // Reset current session state
+  pendingBallot = {};
+  voterName = '';
+  voterNameInput.value = '';
+  voterNameStatus.textContent = '';
+  voterNameStatus.className = 'voter-name-status';
+  votePanel.classList.add('hidden');
+
+  showToast('🗑️ 投票データをリセットしました');
+  renderRanking();
+  renderGallery();
 }
 
 // ===== Upload =====

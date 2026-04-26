@@ -54,7 +54,11 @@
       </div>
 
       <div id="gallery" class="gallery">
-        <div class="empty-state" id="gallery-empty">
+        <div id="gallery-loading" class="gallery-loading">
+          <div class="loading-spinner"></div>
+          <p>読み込み中...</p>
+        </div>
+        <div class="empty-state" id="gallery-empty" style="display:none">
           <p>📷</p>
           <p>まだ写真がありません。<br>最初の写真を投稿してみましょう！</p>
         </div>
@@ -121,6 +125,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -1,85 +1,106 @@
-// ===== Storage Helpers =====
-const STORAGE_KEY = 'photobattle_photos';
-const VOTERS_KEY  = 'photobattle_voters';  // [{ name, votedAt }]
-const CLOSED_KEY  = 'photobattle_closed';  // 'true' when voting is closed
+// ===== Firebase Setup =====
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+import {
+  getFirestore, collection, doc, onSnapshot,
+  addDoc, setDoc, writeBatch, increment, serverTimestamp,
+} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
-function loadPhotos() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
-  catch { return []; }
-}
+const firebaseConfig = {
+  apiKey:            'AIzaSyCR72wRb29htbno5lI8mVHjxlBHbg-UYAc',
+  authDomain:        'photo-battle-a84f7.firebaseapp.com',
+  projectId:         'photo-battle-a84f7',
+  storageBucket:     'photo-battle-a84f7.firebasestorage.app',
+  messagingSenderId: '578938385960',
+  appId:             '1:578938385960:web:65fe356879f91e6118a71d',
+};
 
-function savePhotos(photos) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(photos));
-  } catch (e) {
-    if (photos.length > 1) {
-      const trimmed = [...photos].sort((a,b) => a.createdAt - b.createdAt).slice(1);
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
-        showToast('⚠️ 容量不足のため古い写真を1枚削除しました');
-      } catch (_) { showToast('⚠️ 保存に失敗しました。ブラウザの容量が足りません'); }
-    } else { showToast('⚠️ 保存に失敗しました。ブラウザの容量が足りません'); }
-  }
-}
-
-function loadVoters() {
-  try { return JSON.parse(localStorage.getItem(VOTERS_KEY)) || []; }
-  catch { return []; }
-}
-
-function saveVoters(v) { localStorage.setItem(VOTERS_KEY, JSON.stringify(v)); }
-
-function isVotingClosed() { return localStorage.getItem(CLOSED_KEY) === 'true'; }
-function closeVoting()    { localStorage.setItem(CLOSED_KEY, 'true'); }
-function reopenVoting()   { localStorage.removeItem(CLOSED_KEY); }
-
-function nameAlreadyVoted(name) {
-  return voters.some(v => v.name.trim().toLowerCase() === name.trim().toLowerCase());
-}
+const fbApp     = initializeApp(firebaseConfig);
+const db        = getFirestore(fbApp);
+const photosCol = collection(db, 'photos');
+const votersCol = collection(db, 'voters');
+const stateRef  = doc(db, 'meta', 'state');
 
 // ===== State =====
-let photos      = loadPhotos();
-let voters      = loadVoters();
-let currentSort = 'score';
-let voterName   = '';          // name typed by current user
-let pendingBallot = {};        // { photoId -> points } for current session
+let photos        = [];
+let voters        = [];
+let votingClosed  = false;
+let currentSort   = 'score';
+let currentView   = 'gallery';
+let voterName     = '';
+let pendingBallot = {};
 
 // ===== DOM refs =====
-const navBtns           = document.querySelectorAll('.nav-btn');
-const views             = document.querySelectorAll('.view');
-const gallery           = document.getElementById('gallery');
-const galleryEmpty      = document.getElementById('gallery-empty');
-const sortSelect        = document.getElementById('sort-select');
-const rankingList       = document.getElementById('ranking-list');
-const rankingEmpty      = document.getElementById('ranking-empty');
-const votePanel         = document.getElementById('vote-panel');
-const votePanelName     = document.getElementById('vote-panel-name');
-const votePanelCount    = document.getElementById('vote-panel-count');
-const votePanelChips    = document.getElementById('vote-panel-chips');
-const voteSubmitBtn     = document.getElementById('vote-submit-btn');
-const closedBanner      = document.getElementById('closed-banner');
-const voteInstructions  = document.getElementById('vote-instructions');
-const voterNameInput    = document.getElementById('voter-name-input');
-const voterNameStatus   = document.getElementById('voter-name-status');
+const navBtns          = document.querySelectorAll('.nav-btn');
+const views            = document.querySelectorAll('.view');
+const gallery          = document.getElementById('gallery');
+const galleryEmpty     = document.getElementById('gallery-empty');
+const galleryLoading   = document.getElementById('gallery-loading');
+const sortSelect       = document.getElementById('sort-select');
+const rankingList      = document.getElementById('ranking-list');
+const rankingEmpty     = document.getElementById('ranking-empty');
+const votePanel        = document.getElementById('vote-panel');
+const votePanelName    = document.getElementById('vote-panel-name');
+const votePanelCount   = document.getElementById('vote-panel-count');
+const votePanelChips   = document.getElementById('vote-panel-chips');
+const voteSubmitBtn    = document.getElementById('vote-submit-btn');
+const closedBanner     = document.getElementById('closed-banner');
+const voteInstructions = document.getElementById('vote-instructions');
+const voterNameInput   = document.getElementById('voter-name-input');
+const voterNameStatus  = document.getElementById('voter-name-status');
+const uploaderName     = document.getElementById('uploader-name');
+const photoTitle       = document.getElementById('photo-title');
+const photoInput       = document.getElementById('photo-input');
+const dropZone         = document.getElementById('drop-zone');
+const dropZoneInner    = document.getElementById('drop-zone-inner');
+const previewImg       = document.getElementById('preview-img');
+const submitBtn        = document.getElementById('submit-btn');
+const uploadMsg        = document.getElementById('upload-message');
+const toast            = document.getElementById('toast');
 
-const uploaderName  = document.getElementById('uploader-name');
-const photoTitle    = document.getElementById('photo-title');
-const photoInput    = document.getElementById('photo-input');
-const dropZone      = document.getElementById('drop-zone');
-const dropZoneInner = document.getElementById('drop-zone-inner');
-const previewImg    = document.getElementById('preview-img');
-const submitBtn     = document.getElementById('submit-btn');
-const uploadMsg     = document.getElementById('upload-message');
-const toast         = document.getElementById('toast');
+// ===== Firestore Listeners =====
+const loaded = { photos: false, voters: false, state: false };
+
+function onAllLoaded() {
+  galleryLoading.classList.add('hidden');
+  renderGallery();
+}
+
+function checkAllLoaded() {
+  if (loaded.photos && loaded.voters && loaded.state) onAllLoaded();
+}
+
+onSnapshot(photosCol, snap => {
+  photos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  loaded.photos = true;
+  checkAllLoaded();
+  if (currentView === 'gallery') renderGallery();
+  if (currentView === 'ranking') renderRanking();
+});
+
+onSnapshot(votersCol, snap => {
+  voters = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  loaded.voters = true;
+  checkAllLoaded();
+  updateVoterNameStatus();
+  if (currentView === 'ranking') renderRanking();
+});
+
+onSnapshot(stateRef, snap => {
+  votingClosed = snap.exists() ? (snap.data().votingClosed || false) : false;
+  loaded.state = true;
+  checkAllLoaded();
+  if (currentView === 'gallery') renderGallery();
+  if (currentView === 'ranking') renderRanking();
+});
 
 // ===== Navigation =====
 navBtns.forEach(btn => {
   btn.addEventListener('click', () => {
-    const target = btn.dataset.view;
+    currentView = btn.dataset.view;
     navBtns.forEach(b => b.classList.toggle('active', b === btn));
-    views.forEach(v => v.classList.toggle('active', v.id === `view-${target}`));
-    if (target === 'gallery') renderGallery();
-    if (target === 'ranking') renderRanking();
+    views.forEach(v => v.classList.toggle('active', v.id === `view-${currentView}`));
+    if (currentView === 'gallery') renderGallery();
+    if (currentView === 'ranking') renderRanking();
   });
 });
 
@@ -89,23 +110,36 @@ sortSelect.addEventListener('change', () => {
   renderGallery();
 });
 
-// ===== Voter Name Input =====
-voterNameInput.addEventListener('input', () => {
-  const raw = voterNameInput.value.trim();
-  voterName = raw;
-  pendingBallot = {}; // reset selection when name changes
+// ===== Voter Name =====
+function nameAlreadyVoted(name) {
+  const id = normalizeVoterId(name);
+  return voters.some(v => v.id === id);
+}
 
+function normalizeVoterId(name) {
+  return name.trim().toLowerCase().replace(/\s+/g, '_');
+}
+
+function updateVoterNameStatus() {
+  const raw = voterNameInput.value.trim();
   if (!raw) {
     voterNameStatus.textContent = '';
-    voterNameStatus.className = 'voter-name-status';
+    voterNameStatus.className   = 'voter-name-status';
+    voterName = '';
   } else if (nameAlreadyVoted(raw)) {
     voterNameStatus.textContent = '✗ この名前はすでに投票済みです';
-    voterNameStatus.className = 'voter-name-status status-error';
-    voterName = ''; // block voting
+    voterNameStatus.className   = 'voter-name-status status-error';
+    voterName = '';
   } else {
     voterNameStatus.textContent = '✓ 投票できます';
-    voterNameStatus.className = 'voter-name-status status-ok';
+    voterNameStatus.className   = 'voter-name-status status-ok';
+    voterName = raw;
   }
+}
+
+voterNameInput.addEventListener('input', () => {
+  pendingBallot = {};
+  updateVoterNameStatus();
   renderGallery();
 });
 
@@ -113,42 +147,29 @@ voterNameInput.addEventListener('input', () => {
 function sortedPhotos() {
   const copy = [...photos];
   if (currentSort === 'score')  copy.sort((a,b) => (b.score||0) - (a.score||0));
-  if (currentSort === 'newest') copy.sort((a,b) => b.createdAt - a.createdAt);
-  if (currentSort === 'oldest') copy.sort((a,b) => a.createdAt - b.createdAt);
+  if (currentSort === 'newest') copy.sort((a,b) => (b.createdAt?.toMillis?.()??0) - (a.createdAt?.toMillis?.()??0));
+  if (currentSort === 'oldest') copy.sort((a,b) => (a.createdAt?.toMillis?.()??0) - (b.createdAt?.toMillis?.()??0));
   return copy;
 }
 
 function renderGallery() {
-  const closed = isVotingClosed();
+  closedBanner.classList.toggle('hidden', !votingClosed);
+  voteInstructions.classList.toggle('hidden', votingClosed);
 
-  // Banners
-  if (closed) {
-    closedBanner.classList.remove('hidden');
-    voteInstructions.classList.add('hidden');
-  } else {
-    closedBanner.classList.add('hidden');
-    voteInstructions.classList.remove('hidden');
-  }
-
-  // Clear cards
   Array.from(gallery.children).forEach(el => {
-    if (el !== galleryEmpty) el.remove();
+    if (el !== galleryEmpty && el !== galleryLoading) el.remove();
   });
 
   const list = sortedPhotos();
   if (list.length === 0) { galleryEmpty.style.display = ''; return; }
   galleryEmpty.style.display = 'none';
 
-  const canSelect = !closed && voterName !== '';
+  const canSelect = !votingClosed && voterName !== '';
 
   list.forEach(photo => {
     const isSelected  = photo.id in pendingBallot;
     const assignedPts = pendingBallot[photo.id] || 0;
     const maxReached  = Object.keys(pendingBallot).length >= 5;
-
-    const card = document.createElement('div');
-    card.className = 'photo-card' + (isSelected ? ' selected' : '') + (closed ? ' voted-card' : '');
-    card.dataset.id = photo.id;
 
     let pointSelectorHtml = '';
     if (isSelected && canSelect) {
@@ -163,17 +184,16 @@ function renderGallery() {
         </div>`;
     }
 
-    const scoreHtml = `<div class="score-display">⭐ ${photo.score||0}点</div>`;
-
     let actionHtml = '';
     if (canSelect) {
-      if (isSelected) {
-        actionHtml = `<button class="select-btn selected-btn" data-action="deselect" data-id="${photo.id}">✓ 選択中</button>`;
-      } else {
-        actionHtml = `<button class="select-btn" data-action="select" data-id="${photo.id}" ${maxReached ? 'disabled' : ''}>＋ 選ぶ</button>`;
-      }
+      actionHtml = isSelected
+        ? `<button class="select-btn selected-btn" data-action="deselect" data-id="${photo.id}">✓ 選択中</button>`
+        : `<button class="select-btn" data-action="select" data-id="${photo.id}" ${maxReached ? 'disabled' : ''}>＋ 選ぶ</button>`;
     }
 
+    const card = document.createElement('div');
+    card.className = 'photo-card' + (isSelected ? ' selected' : '') + (votingClosed ? ' voted-card' : '');
+    card.dataset.id = photo.id;
     card.innerHTML = `
       <img src="${photo.dataUrl}" alt="${escHtml(photo.title)}" loading="lazy" />
       <div class="card-body">
@@ -182,7 +202,10 @@ function renderGallery() {
           <div class="card-author">by ${escHtml(photo.author)}</div>
         </div>
         ${pointSelectorHtml}
-        <div class="card-footer">${scoreHtml}${actionHtml}</div>
+        <div class="card-footer">
+          <div class="score-display">⭐ ${photo.score||0}点</div>
+          ${actionHtml}
+        </div>
       </div>`;
     gallery.appendChild(card);
   });
@@ -195,7 +218,7 @@ function renderGallery() {
   });
 
   gallery.querySelectorAll('.point-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', e => {
       e.stopPropagation();
       assignPoints(btn.dataset.id, parseInt(btn.dataset.pts, 10));
     });
@@ -206,14 +229,14 @@ function renderGallery() {
 
 // ===== Selection =====
 function selectPhoto(id) {
-  if (!voterName || isVotingClosed()) return;
+  if (!voterName || votingClosed) return;
   if (Object.keys(pendingBallot).length >= 5) { showToast('⚠️ 最大5枚まで選べます'); return; }
   pendingBallot[id] = 0;
   renderGallery();
 }
 
 function deselectPhoto(id) {
-  if (!voterName || isVotingClosed()) return;
+  if (!voterName || votingClosed) return;
   delete pendingBallot[id];
   renderGallery();
 }
@@ -226,13 +249,19 @@ function assignPoints(id, pts) {
     card.querySelectorAll('.point-btn').forEach(b =>
       b.classList.toggle('active', parseInt(b.dataset.pts, 10) === pts)
     );
+    const sel = card.querySelector('.point-selector');
+    if (sel) {
+      sel.classList.toggle('needs-points', pts === 0);
+      sel.querySelector('.point-selector-label').textContent =
+        pts === 0 ? '⚠️ 得点を選んでください：' : '得点を選ぶ：';
+    }
   }
   updateVotePanel();
 }
 
 // ===== Vote Panel =====
 function updateVotePanel() {
-  if (isVotingClosed() || !voterName) { votePanel.classList.add('hidden'); return; }
+  if (votingClosed || !voterName) { votePanel.classList.add('hidden'); return; }
 
   const entries = Object.entries(pendingBallot);
   if (entries.length === 0) { votePanel.classList.add('hidden'); return; }
@@ -244,7 +273,6 @@ function updateVotePanel() {
   const allAssigned = entries.every(([, pts]) => pts > 0);
   voteSubmitBtn.disabled = !allAssigned;
 
-  // Show hint when some photos still need points
   let hint = votePanel.querySelector('.vote-panel-hint');
   if (!allAssigned) {
     if (!hint) {
@@ -275,35 +303,47 @@ function updateVotePanel() {
 // ===== Submit Vote =====
 voteSubmitBtn.addEventListener('click', submitVote);
 
-function submitVote() {
-  if (isVotingClosed() || !voterName) return;
-  if (nameAlreadyVoted(voterName)) { showToast('⚠️ その名前はすでに投票済みです'); return; }
+async function submitVote() {
+  if (votingClosed || !voterName) return;
 
   const entries = Object.entries(pendingBallot);
   if (entries.length === 0) return;
-  if (!entries.every(([, pts]) => pts > 0)) { showToast('⚠️ すべての写真に得点をつけてください'); return; }
+  if (!entries.every(([, pts]) => pts > 0)) {
+    showToast('⚠️ すべての写真に得点をつけてください');
+    return;
+  }
+  if (nameAlreadyVoted(voterName)) {
+    showToast('⚠️ その名前はすでに投票済みです');
+    return;
+  }
 
-  entries.forEach(([id, pts]) => {
-    const photo = photos.find(p => p.id === id);
-    if (!photo) return;
-    photo.score     = (photo.score     || 0) + pts;
-    photo.voteCount = (photo.voteCount || 0) + 1;
-  });
+  voteSubmitBtn.disabled = true;
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'voters', normalizeVoterId(voterName)), {
+      name: voterName.trim(),
+      votedAt: serverTimestamp(),
+    });
+    entries.forEach(([id, pts]) => {
+      batch.update(doc(db, 'photos', id), {
+        score:     increment(pts),
+        voteCount: increment(1),
+      });
+    });
+    await batch.commit();
 
-  voters.push({ name: voterName, votedAt: Date.now() });
-  savePhotos(photos);
-  saveVoters(voters);
-
-  const name = voterName;
-  voterName     = '';
-  pendingBallot = {};
-  voterNameInput.value  = '';
-  voterNameStatus.textContent = '';
-  voterNameStatus.className = 'voter-name-status';
-
-  votePanel.classList.add('hidden');
-  showToast(`🎉 ${name}さんの投票が完了しました！`);
-  renderGallery();
+    const name = voterName;
+    voterName     = '';
+    pendingBallot = {};
+    voterNameInput.value        = '';
+    voterNameStatus.textContent = '';
+    voterNameStatus.className   = 'voter-name-status';
+    votePanel.classList.add('hidden');
+    showToast(`🎉 ${name}さんの投票が完了しました！`);
+  } catch {
+    showToast('⚠️ 投票に失敗しました。再度お試しください');
+    voteSubmitBtn.disabled = false;
+  }
 }
 
 // ===== Ranking =====
@@ -312,42 +352,27 @@ function renderRanking() {
     if (el !== rankingEmpty) el.remove();
   });
 
-  const closed = isVotingClosed();
-  const list   = [...photos].sort((a,b) => (b.score||0) - (a.score||0));
+  const list = [...photos].sort((a,b) => (b.score||0) - (a.score||0));
 
-  // Voter list + close button section
   const adminSection = document.createElement('div');
   adminSection.className = 'admin-section';
-
-  if (!closed) {
-    adminSection.innerHTML = `
-      <div class="voter-list-header">
-        <span>投票済み：<strong>${voters.length}人</strong></span>
-        <div class="admin-btns">
-          <button id="close-voting-btn" class="btn btn-close">🔒 投票を締め切る</button>
-          <button id="reset-btn" class="btn btn-reset">🗑️ 集計をリセット</button>
-          <button id="new-round-btn" class="btn btn-new-round">🔄 新ラウンド開始</button>
-        </div>
+  adminSection.innerHTML = `
+    <div class="voter-list-header ${votingClosed ? 'closed-header' : ''}">
+      <span>${votingClosed ? '🔒 投票終了　' : ''}投票済み：<strong>${voters.length}人</strong></span>
+      <div class="admin-btns">
+        ${!votingClosed
+          ? `<button id="close-voting-btn" class="btn btn-close">🔒 投票を締め切る</button>`
+          : `<button id="reopen-voting-btn" class="btn btn-reopen">🔓 投票を再開する</button>`
+        }
+        <button id="reset-btn" class="btn btn-reset">🗑️ 集計をリセット</button>
+        <button id="new-round-btn" class="btn btn-new-round">🔄 新ラウンド開始</button>
       </div>
-      <div class="voter-chips">${
-        voters.length === 0
-          ? '<span class="no-voters">まだ誰も投票していません</span>'
-          : voters.map(v => `<span class="voter-chip">${escHtml(v.name)}</span>`).join('')
-      }</div>`;
-  } else {
-    adminSection.innerHTML = `
-      <div class="voter-list-header closed-header">
-        <span>🔒 投票終了　参加者：<strong>${voters.length}人</strong></span>
-        <div class="admin-btns">
-          <button id="reopen-voting-btn" class="btn btn-reopen">🔓 投票を再開する</button>
-          <button id="reset-btn" class="btn btn-reset">🗑️ 集計をリセット</button>
-          <button id="new-round-btn" class="btn btn-new-round">🔄 新ラウンド開始</button>
-        </div>
-      </div>
-      <div class="voter-chips">${
-        voters.map(v => `<span class="voter-chip">${escHtml(v.name)}</span>`).join('')
-      }</div>`;
-  }
+    </div>
+    <div class="voter-chips">${
+      voters.length === 0
+        ? '<span class="no-voters">まだ誰も投票していません</span>'
+        : voters.map(v => `<span class="voter-chip">${escHtml(v.name || v.id)}</span>`).join('')
+    }</div>`;
   rankingList.appendChild(adminSection);
 
   if (list.length === 0) {
@@ -358,101 +383,81 @@ function renderRanking() {
       const rank      = i + 1;
       const rankClass = rank <= 3 ? `rank-${rank}` : 'rank-other';
       const medal     = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
-
-      const item = document.createElement('div');
-      item.className = `ranking-item ${rankClass}`;
-      item.innerHTML = `
+      const item      = document.createElement('div');
+      item.className  = `ranking-item ${rankClass}`;
+      item.innerHTML  = `
         <div class="rank-badge">${medal}</div>
         <img class="ranking-thumb" src="${photo.dataUrl}" alt="${escHtml(photo.title)}" />
         <div class="ranking-info">
           <div class="ranking-title">${escHtml(photo.title)}</div>
           <div class="ranking-author">by ${escHtml(photo.author)}</div>
-          <div class="ranking-votes">${photo.voteCount || 0} 人が投票</div>
+          <div class="ranking-votes">${photo.voteCount||0} 人が投票</div>
         </div>
         <div class="ranking-score">
-          <div class="score-number">${photo.score || 0}</div>
+          <div class="score-number">${photo.score||0}</div>
           <div class="score-label">点</div>
         </div>`;
       rankingList.appendChild(item);
     });
   }
 
-  document.getElementById('close-voting-btn')?.addEventListener('click', () => {
-    if (confirm('投票を締め切りますか？\n締め切ると新しい投票ができなくなります。')) {
-      closeVoting();
+  document.getElementById('close-voting-btn')?.addEventListener('click', async () => {
+    if (confirm('投票を締め切りますか？')) {
+      await setDoc(stateRef, { votingClosed: true }, { merge: true });
       showToast('🔒 投票を締め切りました');
-      renderRanking();
-      renderGallery();
     }
   });
 
-  document.getElementById('reopen-voting-btn')?.addEventListener('click', () => {
+  document.getElementById('reopen-voting-btn')?.addEventListener('click', async () => {
     if (confirm('投票を再開しますか？')) {
-      reopenVoting();
+      await setDoc(stateRef, { votingClosed: false }, { merge: true });
       showToast('🔓 投票を再開しました');
-      renderRanking();
-      renderGallery();
     }
   });
 
-  document.getElementById('reset-btn')?.addEventListener('click', () => {
-    if (confirm('投票データと得点をすべてリセットしますか？\n\n・全員の投票記録が削除されます\n・各写真の得点が0に戻ります\n・写真自体は削除されません\n\nこの操作は取り消せません。')) {
-      resetVotes();
+  document.getElementById('reset-btn')?.addEventListener('click', async () => {
+    if (confirm('投票データと得点をリセットしますか？\n\n・全員の投票記録が削除されます\n・各写真の得点が0に戻ります\n・写真は残ります\n\nこの操作は取り消せません。')) {
+      await resetVotes();
     }
   });
 
-  document.getElementById('new-round-btn')?.addEventListener('click', () => {
-    if (confirm('新ラウンドを開始しますか？\n\n・写真がすべて削除されます\n・投票記録・得点もすべて削除されます\n\nこの操作は取り消せません。')) {
-      startNewRound();
+  document.getElementById('new-round-btn')?.addEventListener('click', async () => {
+    if (confirm('新ラウンドを開始しますか？\n\n・写真・投票記録・得点がすべて削除されます\n\nこの操作は取り消せません。')) {
+      await startNewRound();
     }
   });
 }
 
-function startNewRound() {
-  // Clear everything
-  photos = [];
-  voters = [];
-  savePhotos(photos);
-  saveVoters(voters);
-  reopenVoting();
+async function resetVotes() {
+  const batch = writeBatch(db);
+  photos.forEach(p => batch.update(doc(db, 'photos', p.id), { score: 0, voteCount: 0 }));
+  voters.forEach(v => batch.delete(doc(db, 'voters', v.id)));
+  batch.set(stateRef, { votingClosed: false }, { merge: true });
+  await batch.commit();
+  clearLocalSession();
+  showToast('🗑️ 投票データをリセットしました');
+}
 
-  pendingBallot = {};
-  voterName = '';
-  voterNameInput.value = '';
-  voterNameStatus.textContent = '';
-  voterNameStatus.className = 'voter-name-status';
-  votePanel.classList.add('hidden');
-
+async function startNewRound() {
+  const batch = writeBatch(db);
+  photos.forEach(p => batch.delete(doc(db, 'photos', p.id)));
+  voters.forEach(v => batch.delete(doc(db, 'voters', v.id)));
+  batch.set(stateRef, { votingClosed: false }, { merge: true });
+  await batch.commit();
+  clearLocalSession();
   showToast('🔄 新ラウンドを開始しました！写真を投稿してください');
-  renderRanking();
-  renderGallery();
-
-  // Switch to upload tab
   navBtns.forEach(b => b.classList.toggle('active', b.dataset.view === 'upload'));
   views.forEach(v => v.classList.toggle('active', v.id === 'view-upload'));
+  currentView = 'upload';
 }
 
-function resetVotes() {
-  // Reset scores on all photos
-  photos.forEach(p => { p.score = 0; p.voteCount = 0; });
-  savePhotos(photos);
-
-  // Clear voters and closed state
-  voters = [];
-  saveVoters(voters);
-  reopenVoting();
-
-  // Reset current session state
+function clearLocalSession() {
+  voterName     = '';
   pendingBallot = {};
-  voterName = '';
-  voterNameInput.value = '';
+  voterNameInput.value        = '';
   voterNameStatus.textContent = '';
-  voterNameStatus.className = 'voter-name-status';
+  voterNameStatus.className   = 'voter-name-status';
   votePanel.classList.add('hidden');
-
-  showToast('🗑️ 投票データをリセットしました');
-  renderRanking();
-  renderGallery();
 }
 
 // ===== Upload =====
@@ -465,7 +470,7 @@ function checkSubmitReady() {
 uploaderName.addEventListener('input', checkSubmitReady);
 photoTitle.addEventListener('input', checkSubmitReady);
 
-dropZone.addEventListener('click', (e) => {
+dropZone.addEventListener('click', e => {
   if (e.target === previewImg) return;
   photoInput.click();
 });
@@ -474,21 +479,21 @@ photoInput.addEventListener('change', () => {
   if (photoInput.files[0]) setPreview(photoInput.files[0]);
 });
 
-dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragging'); });
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragging'); });
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragging'));
-dropZone.addEventListener('drop', (e) => {
+dropZone.addEventListener('drop', e => {
   e.preventDefault();
   dropZone.classList.remove('dragging');
   const file = e.dataTransfer.files[0];
-  if (file && file.type.startsWith('image/')) setPreview(file);
+  if (file?.type.startsWith('image/')) setPreview(file);
   else showToast('画像ファイルを選んでください');
 });
 
-// Resize & compress image. Uses createImageBitmap with imageOrientation:'from-image'
-// so EXIF rotation is applied before drawing — fixes portrait photos from smartphones.
+// Compress to max 800px / quality 0.75 to fit within Firestore's 1MB document limit.
+// createImageBitmap with imageOrientation:'from-image' corrects EXIF rotation (portrait photos).
 async function compressImage(file) {
-  const MAX_SIDE = 1200;
-  const QUALITY  = 0.82;
+  const MAX_SIDE = 800;
+  const QUALITY  = 0.75;
   let bitmap;
   try {
     bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
@@ -519,29 +524,36 @@ async function setPreview(file) {
   checkSubmitReady();
 }
 
-submitBtn.addEventListener('click', () => {
+submitBtn.addEventListener('click', async () => {
   if (!pendingFile) return;
-  const photo = {
-    id: crypto.randomUUID(), author: uploaderName.value.trim(),
-    title: photoTitle.value.trim(), dataUrl: pendingFile,
-    score: 0, voteCount: 0, createdAt: Date.now(),
-  };
-  photos.push(photo);
-  savePhotos(photos);
-  pendingFile = null;
-  photoTitle.value = '';
-  previewImg.classList.add('hidden');
-  dropZoneInner.classList.remove('hidden');
-  previewImg.src = '';
-  photoInput.value = '';
-  checkSubmitReady();
-  showUploadMessage('投稿しました！ギャラリーで確認できます。', 'success');
-  showToast('📸 写真を投稿しました！');
+  submitBtn.disabled = true;
+  try {
+    await addDoc(photosCol, {
+      author:    uploaderName.value.trim(),
+      title:     photoTitle.value.trim(),
+      dataUrl:   pendingFile,
+      score:     0,
+      voteCount: 0,
+      createdAt: serverTimestamp(),
+    });
+    pendingFile = null;
+    photoTitle.value = '';
+    previewImg.classList.add('hidden');
+    dropZoneInner.classList.remove('hidden');
+    previewImg.src = '';
+    photoInput.value = '';
+    showUploadMessage('投稿しました！ギャラリーで確認できます。', 'success');
+    showToast('📸 写真を投稿しました！');
+  } catch {
+    showUploadMessage('投稿に失敗しました。再度お試しください。', 'error');
+  } finally {
+    checkSubmitReady();
+  }
 });
 
 function showUploadMessage(text, type) {
   uploadMsg.textContent = text;
-  uploadMsg.className = `upload-message ${type}`;
+  uploadMsg.className   = `upload-message ${type}`;
   uploadMsg.classList.remove('hidden');
   setTimeout(() => uploadMsg.classList.add('hidden'), 4000);
 }
@@ -556,13 +568,12 @@ function showToast(msg) {
   toastTimer = setTimeout(() => {
     toast.classList.remove('show');
     setTimeout(() => toast.classList.add('hidden'), 320);
-  }, 2400);
+  }, 2800);
 }
 
 // ===== Helpers =====
 function escHtml(str) {
-  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-
-// ===== Init =====
-renderGallery();

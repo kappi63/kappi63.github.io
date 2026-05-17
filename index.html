@@ -78,7 +78,10 @@
           <input type="text" id="photo-title" placeholder="タイトルを入力" maxlength="50" />
         </div>
         <div class="form-group">
-          <label>写真を選ぶ</label>
+          <div class="upload-label-row">
+            <label>写真を選ぶ</label>
+            <button id="submit-btn" class="btn btn-primary" disabled>写真を投稿する</button>
+          </div>
           <div class="drop-zone" id="drop-zone">
             <input type="file" id="photo-input" accept="image/*" hidden />
             <div class="drop-zone-inner" id="drop-zone-inner">
@@ -88,9 +91,6 @@
             </div>
             <img id="preview-img" class="preview-img hidden" alt="プレビュー" />
           </div>
-        </div>
-        <div class="form-actions">
-          <button id="submit-btn" class="btn btn-primary" disabled>投稿する</button>
         </div>
         <p id="upload-message" class="upload-message hidden"></p>
       </div>

@@ -106,6 +106,17 @@
   }
   label.chk { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
   input[type="file"] { display: none; }
+  .tag { font-size: 11px; color: var(--muted); align-self: center; }
+  .layer-btn .eye { margin-left: 5px; font-size: 11px; opacity: .9; }
+  .layer-btn.hidden-layer { opacity: .5; }
+  .layer-btn.hidden-layer .eye { opacity: .35; }
+  .swatch {
+    width: 24px; height: 24px; padding: 0;
+    border-radius: 6px;
+    border: 2px solid var(--line);
+    cursor: pointer;
+  }
+  .swatch.active { border-color: #fff; box-shadow: 0 0 0 2px var(--accent); }
 </style>
 </head>
 <body>
@@ -124,6 +135,20 @@
     <button id="undo" title="元に戻す (Ctrl+Z)">↶ 戻す</button>
     <button id="redo" title="やり直し (Ctrl+Y)">↷ 進む</button>
     <button id="delete" title="削除 (Delete)">🗑 削除</button>
+  </div>
+  <div class="sep"></div>
+  <div class="group" id="layers">
+    <span class="tag">レイヤー</span>
+    <button class="layer-btn active" data-layer="0" title="レイヤー1（クリック=有効 / 👁=表示切替）">1<span class="eye" data-eye="0">👁</span></button>
+    <button class="layer-btn" data-layer="1" title="レイヤー2（クリック=有効 / 👁=表示切替）">2<span class="eye" data-eye="1">👁</span></button>
+    <button class="layer-btn" data-layer="2" title="レイヤー3（クリック=有効 / 👁=表示切替）">3<span class="eye" data-eye="2">👁</span></button>
+  </div>
+  <div class="sep"></div>
+  <div class="group" id="colors">
+    <span class="tag">色</span>
+    <button class="swatch active" data-color="0" style="background:#ff5a5a" title="赤 (1)"></button>
+    <button class="swatch" data-color="1" style="background:#4ade80" title="緑 (2)"></button>
+    <button class="swatch" data-color="2" style="background:#4aa3ff" title="青 (3)"></button>
   </div>
   <div class="spacer"></div>
   <div class="group">
@@ -147,6 +172,7 @@
 
 <footer>
   <span>ツール: <b id="f-tool">直線</b></span>
+  <span>作図先: <b id="f-layer">レイヤー1</b> / <b id="f-color">赤</b></span>
   <span>座標: <b id="f-pos">0, 0</b></span>
   <span>長さ: <b id="f-len">—</b></span>
   <span>倍率: <b id="f-zoom">100%</b></span>
@@ -160,9 +186,14 @@
   const canvas = document.getElementById("canvas");
   const ctx = canvas.getContext("2d");
 
+  // レイヤー・色はそれぞれ3種に固定
+  const PALETTE = ["#ff5a5a", "#4ade80", "#4aa3ff"]; // 赤 / 緑 / 青
+  const COLOR_NAMES = ["赤", "緑", "青"];
+  const LAYER_COUNT = 3;
+
   // ---- ワールド状態 ----
   const state = {
-    shapes: [],          // { id, type, ...geom }
+    shapes: [],          // { id, type, layer, color, ...geom }
     tool: "line",
     snap: true,
     grid: 20,            // ワールド単位のグリッド間隔
@@ -170,8 +201,15 @@
     selection: new Set(),
     undo: [],
     redo: [],
+    activeLayer: 0,
+    activeColor: 0,
+    layerVisible: [true, true, true],
   };
   let uid = 1;
+
+  const layerOf = s => (s.layer ?? 0);
+  const colorOf = s => (s.color ?? 0);
+  const isVisible = s => state.layerVisible[layerOf(s)];
 
   // 進行中の作図
   let draft = null;      // { type, ... } 描画途中の図形
@@ -284,6 +322,7 @@
   function shapeAt(wx, wy) {
     const tol = 6 / state.view.scale;
     for (let i = state.shapes.length - 1; i >= 0; i--) {
+      if (!isVisible(state.shapes[i])) continue;
       if (hit(state.shapes[i], wx, wy, tol)) return state.shapes[i];
     }
     return null;
@@ -335,8 +374,8 @@
   }
 
   function strokeShape(s, selected) {
-    ctx.strokeStyle = selected ? "#ffcc44" : "#cfe6ff";
-    ctx.lineWidth = selected ? 2 : 1.5;
+    ctx.strokeStyle = PALETTE[colorOf(s)] || PALETTE[0];
+    ctx.lineWidth = selected ? 2.5 : 1.5;
     ctx.beginPath();
     if (s.type === "line") {
       const a = toScreen(s.x1, s.y1), b = toScreen(s.x2, s.y2);
@@ -372,7 +411,10 @@
     ctx.clearRect(0, 0, w, h);
     drawGrid(w, h);
 
-    for (const s of state.shapes) strokeShape(s, state.selection.has(s.id));
+    for (const s of state.shapes) {
+      if (!isVisible(s)) continue;
+      strokeShape(s, state.selection.has(s.id));
+    }
 
     // 進行中の作図
     if (draft) {
@@ -382,7 +424,7 @@
       ctx.restore();
     }
     if (polyPts && polyPts.length) {
-      ctx.strokeStyle = "#8fd0ff";
+      ctx.strokeStyle = PALETTE[state.activeColor];
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       polyPts.forEach((p, i) => {
@@ -393,7 +435,7 @@
       ctx.lineTo(m.x, m.y);
       ctx.stroke();
       // 頂点マーカー
-      ctx.fillStyle = "#8fd0ff";
+      ctx.fillStyle = PALETTE[state.activeColor];
       polyPts.forEach(p => {
         const q = toScreen(p.x, p.y);
         ctx.fillRect(q.x - 2.5, q.y - 2.5, 5, 5);
@@ -417,6 +459,8 @@
   const toolNames = { select: "選択", line: "直線", rect: "長方形", circle: "円", poly: "連続線" };
   function updateUI() {
     document.getElementById("f-tool").textContent = toolNames[state.tool];
+    document.getElementById("f-layer").textContent = "レイヤー" + (state.activeLayer + 1);
+    document.getElementById("f-color").textContent = COLOR_NAMES[state.activeColor];
     document.getElementById("f-zoom").textContent = Math.round(state.view.scale * 100) + "%";
     document.getElementById("f-count").textContent = state.shapes.length;
     document.getElementById("undo").disabled = !state.undo.length;
@@ -426,6 +470,19 @@
       b.classList.toggle("active", b.dataset.tool === state.tool);
     });
     canvas.classList.toggle("select", state.tool === "select");
+  }
+  function updateLayerUI() {
+    document.querySelectorAll("#layers .layer-btn").forEach(b => {
+      const i = +b.dataset.layer;
+      b.classList.toggle("active", i === state.activeLayer);
+      b.classList.toggle("hidden-layer", !state.layerVisible[i]);
+      b.querySelector(".eye").textContent = state.layerVisible[i] ? "👁" : "🚫";
+    });
+  }
+  function updateColorUI() {
+    document.querySelectorAll("#colors .swatch").forEach(b => {
+      b.classList.toggle("active", +b.dataset.color === state.activeColor);
+    });
   }
   function updatePos() {
     document.getElementById("f-pos").textContent = Math.round(mouse.wx) + ", " + Math.round(mouse.wy);
@@ -453,6 +510,45 @@
     const b = e.target.closest("button");
     if (b) setTool(b.dataset.tool);
   });
+
+  // レイヤー: 本体クリックで有効化（選択中の図形はそのレイヤーへ移動）、👁で表示切替
+  document.getElementById("layers").addEventListener("click", e => {
+    if (e.target.dataset.eye !== undefined) {
+      const i = +e.target.dataset.eye;
+      state.layerVisible[i] = !state.layerVisible[i];
+      if (!state.layerVisible[i]) {
+        // 非表示レイヤーの図形は選択解除
+        for (const s of state.shapes) if (layerOf(s) === i) state.selection.delete(s.id);
+      }
+      updateLayerUI(); render(); updateUI();
+      return;
+    }
+    const b = e.target.closest(".layer-btn");
+    if (!b) return;
+    setActiveLayer(+b.dataset.layer);
+  });
+  function setActiveLayer(i) {
+    state.activeLayer = i;
+    if (state.selection.size) {
+      pushUndo();
+      for (const id of state.selection) { const s = state.shapes.find(o => o.id === id); if (s) s.layer = i; }
+    }
+    updateLayerUI(); render(); updateUI();
+  }
+
+  // 色: クリックで有効化（選択中の図形はその色に変更）
+  document.getElementById("colors").addEventListener("click", e => {
+    const b = e.target.closest(".swatch");
+    if (b) setActiveColor(+b.dataset.color);
+  });
+  function setActiveColor(i) {
+    state.activeColor = i;
+    if (state.selection.size) {
+      pushUndo();
+      for (const id of state.selection) { const s = state.shapes.find(o => o.id === id); if (s) s.color = i; }
+    }
+    updateColorUI(); render(); updateUI();
+  }
 
   // ---- マウス処理 ----
   function evtPos(e) {
@@ -561,6 +657,7 @@
       const x1 = Math.min(drag.wx0, mouse.wx), y1 = Math.min(drag.wy0, mouse.wy);
       const x2 = Math.max(drag.wx0, mouse.wx), y2 = Math.max(drag.wy0, mouse.wy);
       for (const s of state.shapes) {
+        if (!isVisible(s)) continue;
         const b = bbox(s);
         if (b.x1 >= x1 && b.x2 <= x2 && b.y1 >= y1 && b.y2 <= y2) state.selection.add(s.id);
       }
@@ -576,9 +673,10 @@
 
   // 作図ヘルパー
   function startDraft(type, p) {
-    if (type === "line") return { type: "line", x1: p.x, y1: p.y, x2: p.x, y2: p.y };
-    if (type === "rect") return { type: "rect", x1: p.x, y1: p.y, x2: p.x, y2: p.y };
-    if (type === "circle") return { type: "circle", cx: p.x, cy: p.y, r: 0 };
+    const base = { layer: state.activeLayer, color: state.activeColor };
+    if (type === "line") return { ...base, type: "line", x1: p.x, y1: p.y, x2: p.x, y2: p.y };
+    if (type === "rect") return { ...base, type: "rect", x1: p.x, y1: p.y, x2: p.x, y2: p.y };
+    if (type === "circle") return { ...base, type: "circle", cx: p.x, cy: p.y, r: 0 };
   }
   function updateDraft(d, p) {
     if (d.type === "line" || d.type === "rect") { d.x2 = p.x; d.y2 = p.y; }
@@ -592,7 +690,7 @@
   }
   function commitPoly() {
     if (polyPts && polyPts.length >= 2) {
-      addShape({ type: "poly", pts: polyPts.map(p => ({ x: p.x, y: p.y })) });
+      addShape({ type: "poly", layer: state.activeLayer, color: state.activeColor, pts: polyPts.map(p => ({ x: p.x, y: p.y })) });
     }
     polyPts = null;
     render();
@@ -627,6 +725,9 @@
     if (e.key === "r" || e.key === "R") setTool("rect");
     if (e.key === "c" || e.key === "C") setTool("circle");
     if (e.key === "p" || e.key === "P") setTool("poly");
+    if (e.key === "1") setActiveColor(0);
+    if (e.key === "2") setActiveColor(1);
+    if (e.key === "3") setActiveColor(2);
   });
   window.addEventListener("keyup", e => {
     if (e.code === "Space") { spaceDown = false; canvas.classList.remove("pan"); }
@@ -656,7 +757,11 @@
 
   // 保存 / 読込
   document.getElementById("save").onclick = () => {
-    const data = { format: "mini-cad", version: 1, grid: state.grid, shapes: state.shapes };
+    const data = {
+      format: "mini-cad", version: 2, grid: state.grid,
+      palette: PALETTE, layerVisible: state.layerVisible,
+      shapes: state.shapes,
+    };
     downloadBlob(JSON.stringify(data, null, 2), "drawing.json", "application/json");
   };
   document.getElementById("load").onchange = e => {
@@ -668,10 +773,19 @@
         const data = JSON.parse(reader.result);
         if (!Array.isArray(data.shapes)) throw new Error("shapes がありません");
         pushUndo();
-        state.shapes = data.shapes;
+        // 旧形式や範囲外の値は 0..2 に丸めて安全に取り込む
+        const clamp = (v, max) => Math.max(0, Math.min(max, v | 0));
+        state.shapes = data.shapes.map(s => ({
+          ...s,
+          layer: clamp(s.layer ?? 0, LAYER_COUNT - 1),
+          color: clamp(s.color ?? 0, PALETTE.length - 1),
+        }));
+        if (Array.isArray(data.layerVisible) && data.layerVisible.length === LAYER_COUNT) {
+          state.layerVisible = data.layerVisible.map(Boolean);
+        }
         uid = state.shapes.reduce((m, s) => Math.max(m, s.id || 0), 0) + 1;
         state.selection.clear();
-        render(); updateUI();
+        updateLayerUI(); render(); updateUI();
       } catch (err) { alert("読込に失敗しました: " + err.message); }
     };
     reader.readAsText(file);
@@ -680,10 +794,11 @@
 
   // SVG 書き出し
   document.getElementById("svg").onclick = () => {
-    if (!state.shapes.length) { alert("図形がありません"); return; }
+    const shapes = state.shapes.filter(isVisible); // 表示中レイヤーのみ
+    if (!shapes.length) { alert("書き出せる図形がありません（全レイヤー非表示かも）"); return; }
     const pad = 20;
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const s of state.shapes) {
+    for (const s of shapes) {
       const b = bbox(s);
       minX = Math.min(minX, b.x1); minY = Math.min(minY, b.y1);
       maxX = Math.max(maxX, b.x2); maxY = Math.max(maxY, b.y2);
@@ -691,16 +806,17 @@
     const w = maxX - minX + pad * 2, h = maxY - minY + pad * 2;
     const ox = -minX + pad, oy = -minY + pad;
     const el = [];
-    for (const s of state.shapes) {
-      if (s.type === "line") el.push(`<line x1="${s.x1 + ox}" y1="${s.y1 + oy}" x2="${s.x2 + ox}" y2="${s.y2 + oy}"/>`);
+    for (const s of shapes) {
+      const col = PALETTE[colorOf(s)];
+      if (s.type === "line") el.push(`<line stroke="${col}" x1="${s.x1 + ox}" y1="${s.y1 + oy}" x2="${s.x2 + ox}" y2="${s.y2 + oy}"/>`);
       else if (s.type === "rect") {
         const x = Math.min(s.x1, s.x2) + ox, y = Math.min(s.y1, s.y2) + oy;
-        el.push(`<rect x="${x}" y="${y}" width="${Math.abs(s.x2 - s.x1)}" height="${Math.abs(s.y2 - s.y1)}"/>`);
-      } else if (s.type === "circle") el.push(`<circle cx="${s.cx + ox}" cy="${s.cy + oy}" r="${s.r}"/>`);
-      else if (s.type === "poly") el.push(`<polyline points="${s.pts.map(p => (p.x + ox) + "," + (p.y + oy)).join(" ")}"/>`);
+        el.push(`<rect stroke="${col}" x="${x}" y="${y}" width="${Math.abs(s.x2 - s.x1)}" height="${Math.abs(s.y2 - s.y1)}"/>`);
+      } else if (s.type === "circle") el.push(`<circle stroke="${col}" cx="${s.cx + ox}" cy="${s.cy + oy}" r="${s.r}"/>`);
+      else if (s.type === "poly") el.push(`<polyline stroke="${col}" points="${s.pts.map(p => (p.x + ox) + "," + (p.y + oy)).join(" ")}"/>`);
     }
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">\n` +
-      `<g fill="none" stroke="#000" stroke-width="1">\n${el.join("\n")}\n</g>\n</svg>`;
+      `<g fill="none" stroke-width="1">\n${el.join("\n")}\n</g>\n</svg>`;
     downloadBlob(svg, "drawing.svg", "image/svg+xml");
   };
 
@@ -720,6 +836,8 @@
     state.view.x = canvas.clientWidth / 2;
     state.view.y = canvas.clientHeight / 2;
     resize();
+    updateLayerUI();
+    updateColorUI();
     updateUI();
   });
 })();

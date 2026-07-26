@@ -17,8 +17,8 @@
     display: flex; flex-direction: column; overflow: hidden;
   }
   header {
-    display: flex; align-items: center; gap: 12px;
-    padding: 8px 14px; background: var(--panel);
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 12px; background: var(--panel);
     border-bottom: 1px solid var(--line); flex-wrap: wrap;
   }
   header h1 { font-size: 15px; font-weight: 600; letter-spacing: .02em; }
@@ -28,10 +28,10 @@
   .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
   .tag { font-size: 11px; color: var(--muted); align-self: center; }
   button, .btn {
-    font: inherit; font-size: 13px; color: var(--text);
+    font: inherit; font-size: 12.5px; color: var(--text);
     background: var(--panel-2); border: 1px solid var(--line);
-    border-radius: 6px; padding: 6px 10px; cursor: pointer; user-select: none;
-    display: inline-flex; align-items: center; gap: 6px;
+    border-radius: 6px; padding: 5px 8px; cursor: pointer; user-select: none;
+    display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
     transition: background .12s, border-color .12s;
   }
   button:hover, .btn:hover { background: #383844; }
@@ -49,7 +49,7 @@
     position: absolute; left: 12px; bottom: 12px;
     background: rgba(0,0,0,.55); border: 1px solid var(--line); border-radius: 6px;
     padding: 8px 10px; font-size: 11.5px; line-height: 1.6; color: var(--muted);
-    max-width: 280px; pointer-events: none;
+    max-width: 300px; pointer-events: none;
   }
   .hint kbd {
     background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px;
@@ -59,6 +59,23 @@
   input[type="file"] { display: none; }
   .swatch { width: 24px; height: 24px; padding: 0; border-radius: 6px; border: 2px solid var(--line); cursor: pointer; }
   .swatch.active { border-color: #fff; box-shadow: 0 0 0 2px var(--accent); }
+
+  /* 数値入力パネル */
+  #inspect {
+    position: absolute; right: 12px; top: 12px; width: 190px;
+    background: rgba(38,38,46,.96); border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px 12px; font-size: 12px; display: none;
+  }
+  #inspect.show { display: block; }
+  #inspect h2 { font-size: 12px; font-weight: 600; color: var(--accent); margin-bottom: 8px; }
+  #inspect .row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  #inspect .row label { width: 62px; color: var(--muted); }
+  #inspect input[type="number"] {
+    flex: 1; width: 100%; font: inherit; font-size: 12px;
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 5px; padding: 4px 6px;
+  }
+  #inspect .note { color: var(--muted); font-size: 11px; margin-top: 6px; line-height: 1.5; }
   #loading {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     background: var(--bg); color: var(--muted); font-size: 14px; z-index: 5;
@@ -72,6 +89,7 @@
   <div class="group" id="tools">
     <button data-tool="orbit" title="視点操作 (O)">🔄 回転</button>
     <button data-tool="rect" class="active" title="長方形を描く (R)">▭ 長方形</button>
+    <button data-tool="line" title="線を引く (L)">╱ 線</button>
     <button data-tool="push" title="面を押す/引く (E)">⇅ プッシュ/プル</button>
     <button data-tool="select" title="選択 (V)">▲ 選択</button>
   </div>
@@ -79,6 +97,8 @@
   <div class="group">
     <button id="undo" title="元に戻す (Ctrl+Z)">↶ 戻す</button>
     <button id="redo" title="やり直し (Ctrl+Y)">↷ 進む</button>
+    <button id="rotL" title="左に15°回転 ([)">⟲</button>
+    <button id="rotR" title="右に15°回転 (])">⟳</button>
     <button id="delete" title="削除 (Delete)">🗑 削除</button>
   </div>
   <div class="sep"></div>
@@ -94,6 +114,7 @@
     <div class="sep"></div>
     <button id="save" title="JSONで保存">💾 保存</button>
     <label class="btn" title="JSONを読込">📂 開く<input type="file" id="load" accept=".json,application/json"></label>
+    <button id="stl" title="STLで書き出し（3Dプリント用）">⬇ STL</button>
     <button id="home" title="視点をリセット">⌂ 視点</button>
     <button id="clear" title="全消去">✕ 全消去</button>
   </div>
@@ -101,18 +122,35 @@
 
 <main>
   <canvas id="view"></canvas>
-  <div id="loading">3Dエンジンを読み込み中…</div>
+  <div id="loading">3Dエンジンを初期化中…</div>
+
+  <div id="inspect">
+    <h2 id="in-title">寸法</h2>
+    <div id="in-box">
+      <div class="row"><label>幅 X</label><input id="in-sx" type="number" step="1" min="0"></div>
+      <div class="row"><label>奥行 Z</label><input id="in-sz" type="number" step="1" min="0"></div>
+      <div class="row"><label>高さ Y</label><input id="in-sy" type="number" step="1" min="0"></div>
+      <div class="row"><label>回転 °</label><input id="in-rot" type="number" step="15"></div>
+    </div>
+    <div id="in-line">
+      <div class="row"><label>長さ</label><input id="in-len" type="number" step="1" min="0"></div>
+    </div>
+    <div class="note">数値を入れて <kbd>Enter</kbd> で反映</div>
+  </div>
+
   <div class="hint">
     <div><kbd>右ドラッグ</kbd> 回転 / <kbd>中ドラッグ</kbd> 移動 / <kbd>ホイール</kbd> ズーム</div>
     <div><b>長方形</b>: 地面をドラッグ / <b>プッシュ/プル</b>: 面をドラッグ</div>
+    <div><b>線</b>: クリック→クリック。<kbd>X</kbd><kbd>Y</kbd><kbd>Z</kbd> で軸に平行固定</div>
     <div>数字 <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> で色 / <kbd>Delete</kbd> 削除</div>
   </div>
 </main>
 
 <footer>
   <span>ツール: <b id="f-tool">長方形</b></span>
+  <span>拘束: <b id="f-lock">なし</b></span>
   <span>寸法: <b id="f-dim">—</b></span>
-  <span>立体数: <b id="f-count">0</b></span>
+  <span>要素数: <b id="f-count">0</b></span>
   <span id="f-note" style="color:var(--accent)"></span>
 </footer>
 
@@ -1187,8 +1225,10 @@ window.addEventListener("load", function () {
 
   // ===== 定数 =====
   const PALETTE = ["#ff5a5a", "#4ade80", "#4aa3ff"];
+  const AXIS_COLOR = { x: 0xff4d4d, y: 0x51e07a, z: 0x4aa3ff };
   const SNAP = 5;
   const EPS = 1e-6;
+  const DEG = Math.PI / 180;
 
   // ===== シーン =====
   const canvas = document.getElementById("view");
@@ -1206,156 +1246,201 @@ window.addEventListener("load", function () {
   controls.enableDamping = false;
   controls.target.set(0, 0, 0);
 
-  // ライト
   scene.add(new THREE.HemisphereLight(0xffffff, 0x30303a, 0.75));
-  const dir = new THREE.DirectionalLight(0xffffff, 0.75);
-  dir.position.set(60, 120, 40);
-  scene.add(dir);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.75);
+  dirLight.position.set(60, 120, 40);
+  scene.add(dirLight);
 
-  // グリッド
-  const grid = new THREE.GridHelper(400, 80, 0x4a4a58, 0x2b2b34);
-  scene.add(grid);
+  scene.add(new THREE.GridHelper(400, 80, 0x4a4a58, 0x2b2b34));
 
   const world = new THREE.Group();
   scene.add(world);
 
   const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const tmpPlane = new THREE.Plane();
 
   // 面ハイライト
-  const hoverMat = new THREE.MeshBasicMaterial({ color: 0x4aa3ff, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthTest: false });
-  const hoverMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), hoverMat);
-  hoverMesh.visible = false;
-  hoverMesh.renderOrder = 999;
+  const hoverMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({ color: 0x4aa3ff, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthTest: false }));
+  hoverMesh.visible = false; hoverMesh.renderOrder = 999;
   scene.add(hoverMesh);
 
   // 長方形プレビュー
-  const previewMat = new THREE.LineBasicMaterial({ color: 0x8fd0ff });
   const previewGeo = new THREE.BufferGeometry();
-  previewGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(5 * 3), 3));
-  const previewLine = new THREE.LineLoop(previewGeo, previewMat);
+  previewGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(4 * 3), 3));
+  const previewLine = new THREE.LineLoop(previewGeo, new THREE.LineBasicMaterial({ color: 0x8fd0ff }));
   previewLine.visible = false;
   scene.add(previewLine);
 
+  // 線プレビュー
+  const lineGeo = new THREE.BufferGeometry();
+  lineGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(2 * 3), 3));
+  const linePreview = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0xffffff }));
+  linePreview.visible = false;
+  scene.add(linePreview);
+
+  // 始点マーカー
+  const startDot = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 12, 12),
+    new THREE.MeshBasicMaterial({ color: 0xffcc44, depthTest: false }));
+  startDot.visible = false; startDot.renderOrder = 998;
+  scene.add(startDot);
+
   // ===== 状態 =====
   const state = { tool: "rect", snap: true, activeColor: 0 };
-  let objects = [];      // { id, min:{x,y,z}, max:{x,y,z}, color, mesh, edges }
+  let entities = [];   // box: {id,kind:"box",color,c:{x,y,z},s:{x,y,z},rot}  line: {id,kind:"line",color,a,b}
   let selected = null;
   let nextId = 1;
   const undoStack = [], redoStack = [];
 
   const raycaster = new THREE.Raycaster();
-  const mouse = new THREE.Vector2();
+  const ndc = new THREE.Vector2();
   let W = 1, H = 1;
 
   // ===== ユーティリティ =====
   function snapVal(v) { return state.snap ? Math.round(v / SNAP) * SNAP : Math.round(v * 100) / 100; }
-  function sizeOf(o, ax) { return o.max[ax] - o.min[ax]; }
-  function meshes() { return objects.map(o => o.mesh).filter(Boolean); }
-
+  const round2 = v => Math.round(v * 100) / 100;
   function evtNDC(e) {
     const r = canvas.getBoundingClientRect();
-    mouse.x = ((e.clientX - r.left) / r.width) * 2 - 1;
-    mouse.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+    ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+    ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
     return { px: e.clientX - r.left, py: e.clientY - r.top };
   }
-  function groundHit() {
-    raycaster.setFromCamera(mouse, camera);
+  function planeHit(plane) {
+    raycaster.setFromCamera(ndc, camera);
     const p = new THREE.Vector3();
-    return raycaster.ray.intersectPlane(groundPlane, p) ? p : null;
+    return raycaster.ray.intersectPlane(plane, p) ? p : null;
   }
-  function objectHit() {
-    raycaster.setFromCamera(mouse, camera);
-    const hits = raycaster.intersectObjects(meshes(), false);
+  function groundHit() { return planeHit(groundPlane); }
+  function boxMeshes() { return entities.filter(e => e.kind === "box" && e.mesh).map(e => e.mesh); }
+  function allPickables() { return entities.map(e => e.mesh).filter(Boolean); }
+  function pickBox() {
+    raycaster.setFromCamera(ndc, camera);
+    const hits = raycaster.intersectObjects(boxMeshes(), false);
+    return hits.length ? hits[0] : null;
+  }
+  function pickAny() {
+    raycaster.setFromCamera(ndc, camera);
+    raycaster.params.Line.threshold = camera.position.distanceTo(controls.target) * 0.02;
+    const hits = raycaster.intersectObjects(allPickables(), false);
     return hits.length ? hits[0] : null;
   }
   function toPix(v3) {
     const p = v3.clone().project(camera);
     return { x: (p.x * 0.5 + 0.5) * W, y: (-p.y * 0.5 + 0.5) * H };
   }
+  // ローカル軸の世界方向（回転はY軸まわりのみ）
+  function axisDir(e, axis) {
+    const r = (e.rot || 0) * DEG;
+    if (axis === "x") return new THREE.Vector3(Math.cos(r), 0, -Math.sin(r));
+    if (axis === "y") return new THREE.Vector3(0, 1, 0);
+    return new THREE.Vector3(Math.sin(r), 0, Math.cos(r));
+  }
+  function boxQuat(e, flat) {
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, (e.rot || 0) * DEG, 0));
+    if (flat) q.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)));
+    return q;
+  }
 
   // ===== メッシュ生成 =====
-  function disposeObj(o) {
-    if (o.mesh) { world.remove(o.mesh); o.mesh.geometry.dispose(); o.mesh.material.dispose(); o.mesh = null; }
-    if (o.edges) { world.remove(o.edges); o.edges.geometry.dispose(); o.edges.material.dispose(); o.edges = null; }
-  }
-  function buildObjMesh(o) {
-    disposeObj(o);
-    const sx = sizeOf(o, "x"), sy = sizeOf(o, "y"), sz = sizeOf(o, "z");
-    const cx = (o.min.x + o.max.x) / 2, cy = (o.min.y + o.max.y) / 2, cz = (o.min.z + o.max.z) / 2;
-    const zeros = [sx, sy, sz].filter(v => Math.abs(v) < EPS).length;
-    if (zeros >= 2) return; // 退化しすぎ
-    const col = new THREE.Color(PALETTE[o.color ?? 0]);
-    let mesh;
-    if (zeros === 0) {
-      mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz),
-        new THREE.MeshStandardMaterial({ color: col, roughness: 0.85, metalness: 0 }));
-    } else {
-      const mat = new THREE.MeshStandardMaterial({ color: col, roughness: 0.85, metalness: 0, side: THREE.DoubleSide });
-      if (Math.abs(sy) < EPS) { mesh = new THREE.Mesh(new THREE.PlaneGeometry(Math.abs(sx), Math.abs(sz)), mat); mesh.rotation.x = -Math.PI / 2; }
-      else if (Math.abs(sx) < EPS) { mesh = new THREE.Mesh(new THREE.PlaneGeometry(Math.abs(sz), Math.abs(sy)), mat); mesh.rotation.y = Math.PI / 2; }
-      else { mesh = new THREE.Mesh(new THREE.PlaneGeometry(Math.abs(sx), Math.abs(sy)), mat); }
+  function disposeEnt(e) {
+    for (const key of ["mesh", "edges"]) {
+      if (e[key]) { world.remove(e[key]); e[key].geometry.dispose(); e[key].material.dispose(); e[key] = null; }
     }
-    mesh.position.set(cx, cy, cz);
-    mesh.userData.obj = o;
-    world.add(mesh);
-    o.mesh = mesh;
-
-    const edges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(mesh.geometry),
-      new THREE.LineBasicMaterial({ color: o === selected ? 0xffcc44 : 0x1b1b20 }));
-    edges.position.copy(mesh.position);
-    edges.rotation.copy(mesh.rotation);
-    world.add(edges);
-    o.edges = edges;
   }
+  function buildEnt(e) {
+    disposeEnt(e);
+    const col = new THREE.Color(PALETTE[e.color ?? 0]);
+    if (e.kind === "line") {
+      const g = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(e.a.x, e.a.y, e.a.z), new THREE.Vector3(e.b.x, e.b.y, e.b.z)]);
+      const m = new THREE.Line(g, new THREE.LineBasicMaterial({
+        color: e === selected ? 0xffcc44 : col, linewidth: 2 }));
+      m.userData.ent = e;
+      world.add(m); e.mesh = m;
+      return;
+    }
+    const { x: sx, y: sy, z: sz } = e.s;
+    const zeros = [sx, sy, sz].filter(v => Math.abs(v) < EPS).length;
+    if (zeros >= 2) return;
+    const flat = Math.abs(sy) < EPS;
+    let geo;
+    if (!flat) geo = new THREE.BoxGeometry(sx, sy, sz);
+    else geo = new THREE.PlaneGeometry(Math.abs(sx), Math.abs(sz));
+    const mat = new THREE.MeshStandardMaterial({
+      color: col, roughness: 0.85, metalness: 0, side: flat ? THREE.DoubleSide : THREE.FrontSide });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(e.c.x, e.c.y, e.c.z);
+    mesh.quaternion.copy(boxQuat(e, flat));
+    mesh.userData.ent = e;
+    world.add(mesh); e.mesh = mesh;
 
-  function refreshSelectionColors() {
-    for (const o of objects) if (o.edges) o.edges.material.color.set(o === selected ? 0xffcc44 : 0x1b1b20);
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo),
+      new THREE.LineBasicMaterial({ color: e === selected ? 0xffcc44 : 0x1b1b20 }));
+    edges.position.copy(mesh.position);
+    edges.quaternion.copy(mesh.quaternion);
+    world.add(edges); e.edges = edges;
+  }
+  function rebuildAll() { for (const e of entities) buildEnt(e); }
+  function refreshHighlight() {
+    for (const e of entities) {
+      if (e.kind === "line" && e.mesh) e.mesh.material.color.set(e === selected ? 0xffcc44 : PALETTE[e.color ?? 0]);
+      else if (e.edges) e.edges.material.color.set(e === selected ? 0xffcc44 : 0x1b1b20);
+    }
   }
 
   // ===== 履歴 =====
   function serialize() {
-    return JSON.stringify(objects.map(o => ({
-      id: o.id, color: o.color,
-      min: { x: o.min.x, y: o.min.y, z: o.min.z },
-      max: { x: o.max.x, y: o.max.y, z: o.max.z },
-    })));
+    return JSON.stringify(entities.map(e => e.kind === "line"
+      ? { id: e.id, kind: "line", color: e.color, a: { ...e.a }, b: { ...e.b } }
+      : { id: e.id, kind: "box", color: e.color, c: { ...e.c }, s: { ...e.s }, rot: e.rot || 0 }));
   }
-  function rebuildFrom(json) {
-    for (const o of objects) disposeObj(o);
-    const data = JSON.parse(json);
-    objects = data.map(d => ({ id: d.id, color: d.color ?? 0, min: { ...d.min }, max: { ...d.max }, mesh: null, edges: null }));
-    nextId = objects.reduce((m, o) => Math.max(m, o.id), 0) + 1;
+  function loadFrom(json) {
+    for (const e of entities) disposeEnt(e);
+    entities = JSON.parse(json).map(d => d.kind === "line"
+      ? { id: d.id, kind: "line", color: d.color ?? 0, a: { ...d.a }, b: { ...d.b }, mesh: null, edges: null }
+      : { id: d.id, kind: "box", color: d.color ?? 0, c: { ...d.c }, s: { ...d.s }, rot: d.rot || 0, mesh: null, edges: null });
+    nextId = entities.reduce((m, e) => Math.max(m, e.id), 0) + 1;
     selected = null;
-    for (const o of objects) buildObjMesh(o);
-    updateUI();
+    rebuildAll(); updateUI();
   }
   function pushUndo() { undoStack.push(serialize()); if (undoStack.length > 100) undoStack.shift(); redoStack.length = 0; updateUI(); }
-  function undo() { if (!undoStack.length) return; redoStack.push(serialize()); rebuildFrom(undoStack.pop()); }
-  function redo() { if (!redoStack.length) return; undoStack.push(serialize()); rebuildFrom(redoStack.pop()); }
+  function undo() { if (!undoStack.length) return; redoStack.push(serialize()); loadFrom(undoStack.pop()); }
+  function redo() { if (!redoStack.length) return; undoStack.push(serialize()); loadFrom(redoStack.pop()); }
 
   // ===== 面の判定 =====
   function faceInfo(hit) {
+    const e = hit.object.userData.ent;
     const wn = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
-    const ax = Math.abs(wn.x), ay = Math.abs(wn.y), az = Math.abs(wn.z);
-    let axis, sign;
-    if (ax >= ay && ax >= az) { axis = "x"; sign = Math.sign(wn.x) || 1; }
-    else if (ay >= ax && ay >= az) { axis = "y"; sign = Math.sign(wn.y) || 1; }
-    else { axis = "z"; sign = Math.sign(wn.z) || 1; }
-    return { axis, sign, side: sign > 0 ? "max" : "min" };
+    if (Math.abs(e.s.y) < EPS) return { axis: "y", sign: wn.y >= 0 ? 1 : -1 };
+    // Y回転を打ち消してローカル法線へ
+    const ln = wn.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -(e.rot || 0) * DEG);
+    const ax = Math.abs(ln.x), ay = Math.abs(ln.y), az = Math.abs(ln.z);
+    if (ax >= ay && ax >= az) return { axis: "x", sign: Math.sign(ln.x) || 1 };
+    if (ay >= ax && ay >= az) return { axis: "y", sign: Math.sign(ln.y) || 1 };
+    return { axis: "z", sign: Math.sign(ln.z) || 1 };
   }
-  function placeHover(o, axis, side) {
-    const cx = (o.min.x + o.max.x) / 2, cy = (o.min.y + o.max.y) / 2, cz = (o.min.z + o.max.z) / 2;
-    const sx = sizeOf(o, "x"), sy = sizeOf(o, "y"), sz = sizeOf(o, "z");
-    hoverMesh.rotation.set(0, 0, 0);
-    if (axis === "y") { hoverMesh.rotation.x = -Math.PI / 2; hoverMesh.scale.set(Math.max(sx, 0.1), Math.max(sz, 0.1), 1); hoverMesh.position.set(cx, o[side].y, cz); }
-    else if (axis === "x") { hoverMesh.rotation.y = Math.PI / 2; hoverMesh.scale.set(Math.max(sz, 0.1), Math.max(sy, 0.1), 1); hoverMesh.position.set(o[side].x, cy, cz); }
-    else { hoverMesh.scale.set(Math.max(sx, 0.1), Math.max(sy, 0.1), 1); hoverMesh.position.set(cx, cy, o[side].z); }
+  function placeHover(e, axis, sign) {
+    const dir = axisDir(e, axis).multiplyScalar(sign);
+    const center = new THREE.Vector3(e.c.x, e.c.y, e.c.z).add(dir.clone().multiplyScalar(e.s[axis] / 2));
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, (e.rot || 0) * DEG, 0));
+    let w, h;
+    if (axis === "y") { q.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0))); w = e.s.x; h = e.s.z; }
+    else if (axis === "x") { q.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0))); w = e.s.z; h = e.s.y; }
+    else { w = e.s.x; h = e.s.y; }
+    hoverMesh.position.copy(center);
+    hoverMesh.quaternion.copy(q);
+    hoverMesh.scale.set(Math.max(Math.abs(w), 0.1), Math.max(Math.abs(h), 0.1), 1);
     hoverMesh.visible = true;
   }
 
-  // ドラッグ中の長方形の範囲。スナップで辺が潰れた場合は1グリッド分を確保して、
-  // 斜め視点で奥行きが変わりにくいときに「引いたのに何もできない」のを防ぐ。
+  // ===== ドラッグ状態 =====
+  let rectDrag = null;   // { p0, raw }
+  let pushDrag = null;   // { ent, axis, sign, startSize, startCenter, startPix, sAxis, sLen2, moved }
+  let lineDraft = null;  // { a, lock, downPix }
+
+  // 長方形の範囲（スナップで潰れた辺は1グリッド確保）
   function rectExtent(p) {
     const x0 = rectDrag.p0.x, z0 = rectDrag.p0.z;
     const x1 = snapVal(p.x), z1 = snapVal(p.z);
@@ -1370,9 +1455,67 @@ window.addEventListener("load", function () {
     return { minx, minz, maxx, maxz };
   }
 
-  // ===== ドラッグ状態 =====
-  let rectDrag = null;   // { p0, raw }
-  let pushDrag = null;   // { obj, axis, side, startCoord, startPix, sAxis, sLen2 }
+  // ===== 線ツール =====
+  // 終点の候補。lock があればその軸に平行に拘束、無ければ自動で軸に吸着。
+  function linePoint(a, lock) {
+    let p = null;
+    if (lock === "y") {
+      // 始点を通り、カメラを向いた垂直面で拾う
+      const n = new THREE.Vector3().subVectors(camera.position, new THREE.Vector3(a.x, a.y, a.z));
+      n.y = 0;
+      if (n.lengthSq() < EPS) n.set(0, 0, 1);
+      n.normalize();
+      tmpPlane.setFromNormalAndCoplanarPoint(n, new THREE.Vector3(a.x, a.y, a.z));
+      p = planeHit(tmpPlane);
+      if (!p) return null;
+      return { x: a.x, y: snapVal(p.y), z: a.z, lock: "y" };
+    }
+    const hit = pickBox();
+    if (hit) p = hit.point.clone();
+    else {
+      tmpPlane.set(new THREE.Vector3(0, 1, 0), -a.y); // 始点の高さの水平面
+      p = planeHit(tmpPlane);
+    }
+    if (!p) return null;
+    let q = { x: snapVal(p.x), y: snapVal(p.y), z: snapVal(p.z) };
+    if (lock === "x") return { x: q.x, y: a.y, z: a.z, lock: "x" };
+    if (lock === "z") return { x: a.x, y: a.y, z: q.z, lock: "z" };
+    // 自動吸着: ほぼ軸方向なら平行にそろえる
+    const d = { x: q.x - a.x, y: q.y - a.y, z: q.z - a.z };
+    const ax = Math.abs(d.x), ay = Math.abs(d.y), az = Math.abs(d.z);
+    const max = Math.max(ax, ay, az);
+    if (max > EPS) {
+      const others = (ax === max ? ay + az : ay === max ? ax + az : ax + ay);
+      if (others <= max * 0.18) {
+        if (ax === max) return { x: q.x, y: a.y, z: a.z, lock: "x", auto: true };
+        if (ay === max) return { x: a.x, y: q.y, z: a.z, lock: "y", auto: true };
+        return { x: a.x, y: a.y, z: q.z, lock: "z", auto: true };
+      }
+    }
+    return q;
+  }
+  function showLinePreview(a, b, lock) {
+    const arr = lineGeo.attributes.position.array;
+    arr[0] = a.x; arr[1] = a.y; arr[2] = a.z;
+    arr[3] = b.x; arr[4] = b.y; arr[5] = b.z;
+    lineGeo.attributes.position.needsUpdate = true;
+    linePreview.material.color.set(lock ? AXIS_COLOR[lock] : 0xffffff);
+    linePreview.visible = true;
+    const len = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+    setNote("長さ " + round2(len) + (lock ? "（" + lock.toUpperCase() + "軸）" : ""));
+    setLock(lock);
+  }
+  function commitLine(a, b) {
+    if (Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) < EPS) return false;
+    pushUndo();
+    const e = { id: nextId++, kind: "line", color: state.activeColor, a: { ...a }, b: { x: b.x, y: b.y, z: b.z }, mesh: null, edges: null };
+    entities.push(e); buildEnt(e); updateUI();
+    return true;
+  }
+  function endLine() {
+    lineDraft = null; linePreview.visible = false; startDot.visible = false;
+    setNote(""); setLock(null);
+  }
 
   // ===== ツール切替 =====
   function setTool(t) {
@@ -1380,58 +1523,84 @@ window.addEventListener("load", function () {
     controls.mouseButtons.LEFT = (t === "orbit") ? THREE.MOUSE.ROTATE : null;
     controls.mouseButtons.MIDDLE = THREE.MOUSE.PAN;
     controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
-    hoverMesh.visible = false;
-    previewLine.visible = false;
-    if (t !== "select") { selected = null; refreshSelectionColors(); }
+    hoverMesh.visible = false; previewLine.visible = false;
+    endLine();
+    if (t !== "select") { selected = null; refreshHighlight(); }
     updateUI();
   }
-  document.getElementById("tools").addEventListener("click", e => {
-    const b = e.target.closest("button"); if (b) setTool(b.dataset.tool);
+  document.getElementById("tools").addEventListener("click", ev => {
+    const b = ev.target.closest("button"); if (b) setTool(b.dataset.tool);
   });
 
   // ===== 色 =====
-  document.getElementById("colors").addEventListener("click", e => {
-    const b = e.target.closest(".swatch"); if (b) setColor(+b.dataset.color);
+  document.getElementById("colors").addEventListener("click", ev => {
+    const b = ev.target.closest(".swatch"); if (b) setColor(+b.dataset.color);
   });
   function setColor(i) {
     state.activeColor = i;
-    if (selected) { pushUndo(); selected.color = i; buildObjMesh(selected); }
+    if (selected) { pushUndo(); selected.color = i; buildEnt(selected); refreshHighlight(); }
     updateUI();
   }
 
-  // ===== ポインタ操作 =====
-  canvas.addEventListener("pointerdown", e => {
-    evtNDC(e);
-    if (e.button !== 0) return;             // 左のみ作図。右/中はOrbitControlsへ
+  // ===== 回転 =====
+  function rotateSelected(deg) {
+    if (!selected || selected.kind !== "box") return;
+    pushUndo();
+    selected.rot = ((selected.rot || 0) + deg) % 360;
+    buildEnt(selected); refreshHighlight(); updateUI();
+  }
+
+  // ===== ポインタ =====
+  canvas.addEventListener("pointerdown", ev => {
+    const pix = evtNDC(ev);
+    if (ev.button !== 0) return;
+
     if (state.tool === "rect") {
       const p = groundHit(); if (!p) return;
       rectDrag = { p0: { x: snapVal(p.x), z: snapVal(p.z) }, raw: { x: p.x, z: p.z } };
-      canvas.setPointerCapture(e.pointerId);
+      canvas.setPointerCapture(ev.pointerId);
+
+    } else if (state.tool === "line") {
+      if (!lineDraft) {
+        const hit = pickBox();
+        let a;
+        if (hit) a = { x: snapVal(hit.point.x), y: snapVal(hit.point.y), z: snapVal(hit.point.z) };
+        else { const p = groundHit(); if (!p) return; a = { x: snapVal(p.x), y: 0, z: snapVal(p.z) }; }
+        lineDraft = { a, lock: null, downPix: pix };
+        startDot.position.set(a.x, a.y, a.z);
+        startDot.scale.setScalar(camera.position.distanceTo(controls.target) * 0.006);
+        startDot.visible = true;
+      } else {
+        const b = linePoint(lineDraft.a, lineDraft.lock);
+        if (b && commitLine(lineDraft.a, b)) endLine();
+      }
+
     } else if (state.tool === "push") {
-      const hit = objectHit(); if (!hit) return;
-      const o = hit.object.userData.obj;
+      const hit = pickBox(); if (!hit) return;
+      const e = hit.object.userData.ent;
       const fi = faceInfo(hit);
+      const dir = axisDir(e, fi.axis).multiplyScalar(fi.sign);
       const grab = hit.point.clone();
-      const axisVec = new THREE.Vector3(fi.axis === "x" ? 1 : 0, fi.axis === "y" ? 1 : 0, fi.axis === "z" ? 1 : 0);
-      const a = toPix(grab), b = toPix(grab.clone().add(axisVec));
+      const a = toPix(grab), b = toPix(grab.clone().add(dir));
       const sAxis = { x: b.x - a.x, y: b.y - a.y };
       pushUndo();
       pushDrag = {
-        obj: o, axis: fi.axis, side: fi.side, startCoord: o[fi.side][fi.axis],
-        startPix: evtNDC(e), sAxis, sLen2: sAxis.x * sAxis.x + sAxis.y * sAxis.y, moved: false,
+        ent: e, axis: fi.axis, sign: fi.sign, dir,
+        startSize: e.s[fi.axis], startCenter: { ...e.c },
+        startPix: pix, sAxis, sLen2: sAxis.x * sAxis.x + sAxis.y * sAxis.y, moved: false,
       };
       controls.enabled = false;
-      canvas.setPointerCapture(e.pointerId);
+      canvas.setPointerCapture(ev.pointerId);
+
     } else if (state.tool === "select") {
-      const hit = objectHit();
-      selected = hit ? hit.object.userData.obj : null;
-      refreshSelectionColors();
-      updateUI();
+      const hit = pickAny();
+      selected = hit ? hit.object.userData.ent : null;
+      refreshHighlight(); updateUI();
     }
   });
 
-  canvas.addEventListener("pointermove", e => {
-    const pix = evtNDC(e);
+  canvas.addEventListener("pointermove", ev => {
+    const pix = evtNDC(ev);
 
     if (rectDrag) {
       const p = groundHit(); if (!p) return;
@@ -1442,56 +1611,73 @@ window.addEventListener("load", function () {
     }
     if (pushDrag) {
       const d = pushDrag;
-      if (d.sLen2 < 1e-3) return; // 面を真正面から見ている
+      if (d.sLen2 < 1e-3) return;
       const dx = pix.px - d.startPix.px, dy = pix.py - d.startPix.py;
       const along = (dx * d.sAxis.x + dy * d.sAxis.y) / d.sLen2;
-      let newCoord = snapVal(d.startCoord + along);
-      const o = d.obj;
-      if (d.side === "max") o.max[d.axis] = Math.max(newCoord, o.min[d.axis]);
-      else o.min[d.axis] = Math.min(newCoord, o.max[d.axis]);
+      const e = d.ent;
+      const newSize = Math.max(0, snapVal(d.startSize + along));
+      const delta = newSize - d.startSize;
+      e.s[d.axis] = newSize;
+      e.c.x = d.startCenter.x + d.dir.x * delta / 2;
+      e.c.y = d.startCenter.y + d.dir.y * delta / 2;
+      e.c.z = d.startCenter.z + d.dir.z * delta / 2;
       d.moved = true;
-      buildObjMesh(o);
-      placeHover(o, d.axis, d.side);
-      setNote("厚み " + Math.abs(sizeOf(o, d.axis)));
+      buildEnt(e); placeHover(e, d.axis, d.sign);
+      setNote("厚み " + round2(newSize));
       updateUI();
       return;
     }
+    if (lineDraft) {
+      const b = linePoint(lineDraft.a, lineDraft.lock);
+      if (b) showLinePreview(lineDraft.a, b, b.lock || null);
+      return;
+    }
     if (state.tool === "push") {
-      const hit = objectHit();
-      if (hit) { const fi = faceInfo(hit); placeHover(hit.object.userData.obj, fi.axis, fi.side); }
+      const hit = pickBox();
+      if (hit) { const fi = faceInfo(hit); placeHover(hit.object.userData.ent, fi.axis, fi.sign); }
       else hoverMesh.visible = false;
     }
   });
 
-  window.addEventListener("pointerup", e => {
+  window.addEventListener("pointerup", ev => {
     if (rectDrag) {
       const p = groundHit();
       if (p) {
         const { minx, minz, maxx, maxz } = rectExtent(p);
         if (maxx - minx > EPS && maxz - minz > EPS) {
           pushUndo();
-          const o = { id: nextId++, color: state.activeColor, min: { x: minx, y: 0, z: minz }, max: { x: maxx, y: 0, z: maxz }, mesh: null, edges: null };
-          objects.push(o);
-          buildObjMesh(o);
+          const e = {
+            id: nextId++, kind: "box", color: state.activeColor,
+            c: { x: (minx + maxx) / 2, y: 0, z: (minz + maxz) / 2 },
+            s: { x: maxx - minx, y: 0, z: maxz - minz }, rot: 0, mesh: null, edges: null };
+          entities.push(e); buildEnt(e);
         }
       }
       rectDrag = null; previewLine.visible = false; setNote(""); updateUI();
     }
     if (pushDrag) {
-      const o = pushDrag.obj;
-      // 貫通して厚みが無くなったら削除。
-      // ただし高さ(y)が0の場合は「地面の長方形に戻った」状態なので残す。
-      const flatX = Math.abs(sizeOf(o, "x")) < EPS;
-      const flatY = Math.abs(sizeOf(o, "y")) < EPS;
-      const flatZ = Math.abs(sizeOf(o, "z")) < EPS;
+      const e = pushDrag.ent;
+      const flatX = Math.abs(e.s.x) < EPS, flatY = Math.abs(e.s.y) < EPS, flatZ = Math.abs(e.s.z) < EPS;
+      // 貫通して厚みが無くなったら削除（高さ0は「地面の長方形に戻った」ので残す）
       if (flatX || flatZ || (flatY && (flatX || flatZ))) {
-        disposeObj(o); objects = objects.filter(x => x !== o);
-        if (selected === o) selected = null;
+        disposeEnt(e); entities = entities.filter(x => x !== e);
+        if (selected === e) selected = null;
       }
-      if (!pushDrag.moved) { undoStack.pop(); } // 変化なしなら履歴を戻す
+      if (!pushDrag.moved) undoStack.pop();
       pushDrag = null; controls.enabled = true; setNote(""); updateUI();
     }
+    // 線: ドラッグで引いた場合はここで確定
+    if (lineDraft && ev.button === 0) {
+      const moved = Math.hypot(ev.clientX - (canvas.getBoundingClientRect().left + lineDraft.downPix.px),
+                               ev.clientY - (canvas.getBoundingClientRect().top + lineDraft.downPix.py));
+      if (moved > 6) {
+        const b = linePoint(lineDraft.a, lineDraft.lock);
+        if (b && commitLine(lineDraft.a, b)) endLine();
+      }
+    }
   });
+
+  canvas.addEventListener("contextmenu", ev => ev.preventDefault());
 
   function setPreviewRect(minx, minz, maxx, maxz) {
     const y = 0.05;
@@ -1499,7 +1685,6 @@ window.addEventListener("load", function () {
     const pts = [[minx, y, minz], [maxx, y, minz], [maxx, y, maxz], [minx, y, maxz]];
     for (let i = 0; i < 4; i++) { arr[i * 3] = pts[i][0]; arr[i * 3 + 1] = pts[i][1]; arr[i * 3 + 2] = pts[i][2]; }
     previewGeo.attributes.position.needsUpdate = true;
-    previewGeo.setDrawRange(0, 4);
     previewLine.visible = true;
   }
 
@@ -1507,75 +1692,230 @@ window.addEventListener("load", function () {
   function deleteSelected() {
     if (!selected) return;
     pushUndo();
-    disposeObj(selected);
-    objects = objects.filter(o => o !== selected);
-    selected = null;
-    updateUI();
+    disposeEnt(selected);
+    entities = entities.filter(e => e !== selected);
+    selected = null; updateUI();
   }
 
   // ===== UI =====
-  const toolNames = { orbit: "回転", rect: "長方形", push: "プッシュ/プル", select: "選択" };
+  const toolNames = { orbit: "回転", rect: "長方形", line: "線", push: "プッシュ/プル", select: "選択" };
+  function setNote(t) { document.getElementById("f-note").textContent = t; }
+  function setLock(l) { document.getElementById("f-lock").textContent = l ? l.toUpperCase() + "軸" : "なし"; }
+
   function updateUI() {
     document.getElementById("f-tool").textContent = toolNames[state.tool];
-    document.getElementById("f-count").textContent = objects.length;
+    document.getElementById("f-count").textContent = entities.length;
     document.getElementById("undo").disabled = !undoStack.length;
     document.getElementById("redo").disabled = !redoStack.length;
     document.getElementById("delete").disabled = !selected;
+    const isBox = selected && selected.kind === "box";
+    document.getElementById("rotL").disabled = !isBox;
+    document.getElementById("rotR").disabled = !isBox;
     document.querySelectorAll("#tools button").forEach(b => b.classList.toggle("active", b.dataset.tool === state.tool));
     document.querySelectorAll("#colors .swatch").forEach(b => b.classList.toggle("active", +b.dataset.color === state.activeColor));
-    const o = selected;
-    document.getElementById("f-dim").textContent = o
-      ? `${Math.abs(sizeOf(o, "x"))} × ${Math.abs(sizeOf(o, "z"))} × ${Math.abs(sizeOf(o, "y"))}`
-      : "—";
+
+    let dim = "—";
+    if (isBox) dim = `${round2(selected.s.x)} × ${round2(selected.s.z)} × ${round2(selected.s.y)}`;
+    else if (selected) dim = "長さ " + round2(Math.hypot(selected.b.x - selected.a.x, selected.b.y - selected.a.y, selected.b.z - selected.a.z));
+    document.getElementById("f-dim").textContent = dim;
+    updateInspector();
   }
-  function setNote(t) { document.getElementById("f-note").textContent = t; }
+
+  function updateInspector() {
+    const box = document.getElementById("inspect");
+    const boxRows = document.getElementById("in-box"), lineRows = document.getElementById("in-line");
+    if (!selected) { box.classList.remove("show"); return; }
+    box.classList.add("show");
+    if (selected.kind === "box") {
+      boxRows.style.display = ""; lineRows.style.display = "none";
+      document.getElementById("in-title").textContent = "直方体の寸法";
+      document.getElementById("in-sx").value = round2(selected.s.x);
+      document.getElementById("in-sz").value = round2(selected.s.z);
+      document.getElementById("in-sy").value = round2(selected.s.y);
+      document.getElementById("in-rot").value = round2(selected.rot || 0);
+    } else {
+      boxRows.style.display = "none"; lineRows.style.display = "";
+      document.getElementById("in-title").textContent = "線";
+      document.getElementById("in-len").value =
+        round2(Math.hypot(selected.b.x - selected.a.x, selected.b.y - selected.a.y, selected.b.z - selected.a.z));
+    }
+  }
+
+  function applyInspector() {
+    if (!selected) return;
+    const num = id => parseFloat(document.getElementById(id).value);
+    // 入力値は pushUndo より先に読む（pushUndo→updateInspector が入力欄を書き戻すため）
+    if (selected.kind === "box") {
+      const nx = Math.max(0, num("in-sx") || 0);
+      const nz = Math.max(0, num("in-sz") || 0);
+      const ny = Math.max(0, num("in-sy") || 0);
+      const rot = num("in-rot") || 0;
+      if (nx === selected.s.x && nz === selected.s.z && ny === selected.s.y && rot === (selected.rot || 0)) return;
+      pushUndo();
+      const bottom = selected.c.y - selected.s.y / 2;   // 底面を保って高さを変える
+      selected.s = { x: nx, y: ny, z: nz };
+      selected.c.y = bottom + ny / 2;
+      selected.rot = rot;
+    } else {
+      const len = Math.max(0, num("in-len") || 0);
+      const d = new THREE.Vector3(selected.b.x - selected.a.x, selected.b.y - selected.a.y, selected.b.z - selected.a.z);
+      if (d.lengthSq() < EPS || Math.abs(d.length() - len) < EPS) return;
+      pushUndo();
+      d.normalize().multiplyScalar(len);
+      selected.b = { x: selected.a.x + d.x, y: selected.a.y + d.y, z: selected.a.z + d.z };
+    }
+    buildEnt(selected); refreshHighlight(); updateUI();
+  }
+  ["in-sx", "in-sz", "in-sy", "in-rot", "in-len"].forEach(id => {
+    document.getElementById(id).addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); applyInspector(); } });
+    document.getElementById(id).addEventListener("change", applyInspector);
+  });
 
   // ===== ボタン =====
   document.getElementById("undo").onclick = undo;
   document.getElementById("redo").onclick = redo;
   document.getElementById("delete").onclick = deleteSelected;
+  document.getElementById("rotL").onclick = () => rotateSelected(-15);
+  document.getElementById("rotR").onclick = () => rotateSelected(15);
   document.getElementById("home").onclick = () => { camera.position.copy(HOME); controls.target.set(0, 0, 0); controls.update(); };
-  document.getElementById("snap").onchange = e => { state.snap = e.target.checked; };
+  document.getElementById("snap").onchange = ev => { state.snap = ev.target.checked; };
   document.getElementById("clear").onclick = () => {
-    if (!objects.length) return;
-    if (confirm("すべての立体を消去しますか？")) { pushUndo(); for (const o of objects) disposeObj(o); objects = []; selected = null; updateUI(); }
+    if (!entities.length) return;
+    if (confirm("すべて消去しますか？")) {
+      pushUndo();
+      for (const e of entities) disposeEnt(e);
+      entities = []; selected = null; updateUI();
+    }
   };
 
-  document.getElementById("save").onclick = () => {
-    const data = { format: "mini-modeler", version: 1, objects: JSON.parse(serialize()) };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "model.json"; a.click();
+  function download(blob, name) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = name; a.click();
     URL.revokeObjectURL(a.href);
+  }
+
+  document.getElementById("save").onclick = () => {
+    const data = { format: "mini-modeler", version: 2, entities: JSON.parse(serialize()) };
+    download(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }), "model.json");
   };
-  document.getElementById("load").onchange = e => {
-    const file = e.target.files[0]; if (!file) return;
+  document.getElementById("load").onchange = ev => {
+    const file = ev.target.files[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
       try {
         const data = JSON.parse(reader.result);
-        if (!Array.isArray(data.objects)) throw new Error("objects がありません");
+        const list = data.entities || data.objects;
+        if (!Array.isArray(list)) throw new Error("データがありません");
         pushUndo();
-        rebuildFrom(JSON.stringify(data.objects));
+        // v1（min/max形式）も読み込めるように変換
+        const conv = list.map(d => {
+          if (d.kind) return d;
+          return { id: d.id, kind: "box", color: d.color ?? 0,
+            c: { x: (d.min.x + d.max.x) / 2, y: (d.min.y + d.max.y) / 2, z: (d.min.z + d.max.z) / 2 },
+            s: { x: d.max.x - d.min.x, y: d.max.y - d.min.y, z: d.max.z - d.min.z }, rot: 0 };
+        });
+        loadFrom(JSON.stringify(conv));
       } catch (err) { alert("読込に失敗しました: " + err.message); }
     };
-    reader.readAsText(file); e.target.value = "";
+    reader.readAsText(file); ev.target.value = "";
+  };
+
+  // ===== STL 書き出し =====
+  function boxCorners(e) {
+    const r = (e.rot || 0) * DEG, cos = Math.cos(r), sin = Math.sin(r);
+    const hx = e.s.x / 2, hy = e.s.y / 2, hz = e.s.z / 2;
+    const out = {};
+    for (const i of [0, 1]) for (const j of [0, 1]) for (const k of [0, 1]) {
+      const lx = i ? hx : -hx, ly = j ? hy : -hy, lz = k ? hz : -hz;
+      out[`${i}${j}${k}`] = {
+        x: e.c.x + lx * cos + lz * sin,
+        y: e.c.y + ly,
+        z: e.c.z - lx * sin + lz * cos,
+      };
+    }
+    return out;
+  }
+  function boxTriangles(e) {
+    const c = boxCorners(e);
+    const quads = [
+      { n: axisDir(e, "x").multiplyScalar(1), v: ["100", "110", "111", "101"] },
+      { n: axisDir(e, "x").multiplyScalar(-1), v: ["000", "010", "011", "001"] },
+      { n: axisDir(e, "y").multiplyScalar(1), v: ["010", "110", "111", "011"] },
+      { n: axisDir(e, "y").multiplyScalar(-1), v: ["000", "100", "101", "001"] },
+      { n: axisDir(e, "z").multiplyScalar(1), v: ["001", "101", "111", "011"] },
+      { n: axisDir(e, "z").multiplyScalar(-1), v: ["000", "100", "110", "010"] },
+    ];
+    const tris = [];
+    for (const q of quads) {
+      const p = q.v.map(k => c[k]);
+      for (const [a, b, cc] of [[0, 1, 2], [0, 2, 3]]) {
+        let v0 = p[a], v1 = p[b], v2 = p[cc];
+        // 外向きになるよう巻き方向を合わせる
+        const ux = v1.x - v0.x, uy = v1.y - v0.y, uz = v1.z - v0.z;
+        const wx = v2.x - v0.x, wy = v2.y - v0.y, wz = v2.z - v0.z;
+        const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
+        if (nx * q.n.x + ny * q.n.y + nz * q.n.z < 0) { const t = v1; v1 = v2; v2 = t; }
+        tris.push({ n: q.n, v: [v0, v1, v2] });
+      }
+    }
+    return tris;
+  }
+  document.getElementById("stl").onclick = () => {
+    const solids = entities.filter(e => e.kind === "box" &&
+      Math.abs(e.s.x) > EPS && Math.abs(e.s.y) > EPS && Math.abs(e.s.z) > EPS);
+    if (!solids.length) { alert("書き出せる立体がありません（高さのある立体を作ってください）"); return; }
+    const tris = [];
+    for (const e of solids) tris.push(...boxTriangles(e));
+    const buf = new ArrayBuffer(84 + tris.length * 50);
+    const dv = new DataView(buf);
+    const header = "Mini Modeler STL";
+    for (let i = 0; i < 80; i++) dv.setUint8(i, i < header.length ? header.charCodeAt(i) : 32);
+    dv.setUint32(80, tris.length, true);
+    let off = 84;
+    for (const t of tris) {
+      dv.setFloat32(off, t.n.x, true); dv.setFloat32(off + 4, t.n.y, true); dv.setFloat32(off + 8, t.n.z, true);
+      off += 12;
+      for (const v of t.v) {
+        dv.setFloat32(off, v.x, true); dv.setFloat32(off + 4, v.y, true); dv.setFloat32(off + 8, v.z, true);
+        off += 12;
+      }
+      dv.setUint16(off, 0, true); off += 2;
+    }
+    download(new Blob([buf], { type: "model/stl" }), "model.stl");
+    const skipped = entities.length - solids.length;
+    setNote(skipped > 0 ? `STL出力: ${solids.length}個（線・平面 ${skipped}個は対象外）` : `STL出力: ${solids.length}個`);
   };
 
   // ===== キーボード =====
-  window.addEventListener("keydown", e => {
-    const meta = e.ctrlKey || e.metaKey;
-    if (meta && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
-    if (meta && e.key.toLowerCase() === "y") { e.preventDefault(); redo(); return; }
-    if (e.target.tagName === "INPUT") return;
-    if (e.key === "Delete" || e.key === "Backspace") { deleteSelected(); return; }
-    if (e.key === "o" || e.key === "O") setTool("orbit");
-    if (e.key === "r" || e.key === "R") setTool("rect");
-    if (e.key === "e" || e.key === "E") setTool("push");
-    if (e.key === "v" || e.key === "V") setTool("select");
-    if (e.key === "1") setColor(0);
-    if (e.key === "2") setColor(1);
-    if (e.key === "3") setColor(2);
-    if (e.key === "Escape") { rectDrag = null; previewLine.visible = false; }
+  window.addEventListener("keydown", ev => {
+    const meta = ev.ctrlKey || ev.metaKey;
+    if (meta && ev.key.toLowerCase() === "z") { ev.preventDefault(); ev.shiftKey ? redo() : undo(); return; }
+    if (meta && ev.key.toLowerCase() === "y") { ev.preventDefault(); redo(); return; }
+    if (ev.target.tagName === "INPUT") return;
+
+    // 線を引いている間は X/Y/Z で軸に平行固定（同じキーで解除）
+    if (lineDraft) {
+      const k = ev.key.toLowerCase();
+      if (k === "x" || k === "y" || k === "z") {
+        lineDraft.lock = (lineDraft.lock === k) ? null : k;
+        setLock(lineDraft.lock);
+        return;
+      }
+      if (ev.key === "Escape") { endLine(); return; }
+    }
+    if (ev.key === "Escape") { rectDrag = null; previewLine.visible = false; endLine(); return; }
+    if (ev.key === "Delete" || ev.key === "Backspace") { deleteSelected(); return; }
+    if (ev.key === "[") { rotateSelected(-15); return; }
+    if (ev.key === "]") { rotateSelected(15); return; }
+    const k = ev.key.toLowerCase();
+    if (k === "o") setTool("orbit");
+    if (k === "r") setTool("rect");
+    if (k === "l") setTool("line");
+    if (k === "e") setTool("push");
+    if (k === "v") setTool("select");
+    if (ev.key === "1") setColor(0);
+    if (ev.key === "2") setColor(1);
+    if (ev.key === "3") setColor(2);
   });
 
   // ===== リサイズ & ループ =====
@@ -1588,7 +1928,6 @@ window.addEventListener("load", function () {
   window.addEventListener("resize", resize);
   resize();
   setTool("rect");
-
   (function animate() { requestAnimationFrame(animate); renderer.render(scene, camera); })();
 });
 </script>

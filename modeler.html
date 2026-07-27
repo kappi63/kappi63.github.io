@@ -88,8 +88,10 @@
   <div class="group" id="tools">
     <button data-tool="orbit" title="視点操作 (O)">🔄 回転</button>
     <button data-tool="rect" class="active" title="長方形: 地面なら立体、面の上なら領域 (R)">▭ 長方形</button>
+    <button data-tool="circle" title="円: 地面なら円柱のもと、面の上なら丸い領域 (C)">◯ 円</button>
     <button data-tool="line" title="線を引く (L)">╱ 線</button>
-    <button data-tool="push" title="面や線で囲んだ領域を押す/引く (E)">⇅ プッシュ/プル</button>
+    <button data-tool="push" title="面や囲んだ領域を押す/引く (E)">⇅ プッシュ/プル</button>
+    <button data-tool="paint" title="面に色を塗る (B)">🎨 塗る</button>
     <button data-tool="select" title="選択 (V)">▲ 選択</button>
   </div>
   <div class="sep"></div>
@@ -103,7 +105,8 @@
   <div class="sep"></div>
   <div class="group" id="colors">
     <span class="tag">色</span>
-    <button class="swatch active" data-color="0" style="background:#ff5a5a" title="赤 (1)"></button>
+    <button class="swatch active" data-color="-1" style="background:#b8b8c4" title="無色にもどす (0)"></button>
+    <button class="swatch" data-color="0" style="background:#ff5a5a" title="赤 (1)"></button>
     <button class="swatch" data-color="1" style="background:#4ade80" title="緑 (2)"></button>
     <button class="swatch" data-color="2" style="background:#4aa3ff" title="青 (3)"></button>
   </div>
@@ -139,10 +142,12 @@
 
   <div class="hint">
     <div><kbd>右ドラッグ</kbd> 回転 / <kbd>中ドラッグ</kbd> 移動 / <kbd>ホイール</kbd> ズーム</div>
-    <div><b>長方形</b>: 地面=立体 / 立体の面の上=領域（線4本）</div>
-    <div><b>線</b>: クリック→クリック。<kbd>X</kbd><kbd>Y</kbd><kbd>Z</kbd> で軸に平行固定</div>
-    <div><b>プッシュ/プル</b>: 面をドラッグ。線で囲んだ領域の中なら
+    <div><b>長方形・円</b>: 地面=立体のもと / 立体の面の上=領域</div>
+    <div><b>線</b>: クリック→クリック。<kbd>X</kbd><kbd>Y</kbd><kbd>Z</kbd> で軸に平行固定。
+      3本つなげば三角形の領域になります</div>
+    <div><b>プッシュ/プル</b>: 面をドラッグ。囲んだ領域の中なら
       その領域だけを押し引き（外=出っ張り / 内=くぼみ・穴）</div>
+    <div><b>塗る</b>: 面をクリックでその面だけ着色。<kbd>0</kbd>=無色にもどす</div>
   </div>
 </main>
 
@@ -1870,7 +1875,9 @@ window.addEventListener("load", function () {
   document.getElementById("loading").style.display = "none";
 
   // ===== 定数 =====
-  const PALETTE = ["#ff5a5a", "#4ade80", "#4aa3ff"];
+  const NEUTRAL = "#b8b8c4";                                   // 初期状態は無色
+  const PALETTE = ["#ff5a5a", "#4ade80", "#4aa3ff"];           // 0=赤 1=緑 2=青（-1 は無色）
+  const colorOf = i => (i == null || i < 0) ? NEUTRAL : PALETTE[i];
   const AXIS_COLOR = { x: 0xff4d4d, y: 0x51e07a, z: 0x4aa3ff };
   const SNAP = 5;
   const EPS = 1e-6;
@@ -1943,7 +1950,7 @@ window.addEventListener("load", function () {
 
   // 長方形プレビュー
   const previewGeo = new THREE.BufferGeometry();
-  previewGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(4 * 3), 3));
+  previewGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(64 * 3), 3));
   const previewLine = new THREE.LineLoop(previewGeo, new THREE.LineBasicMaterial({ color: 0x8fd0ff, depthTest: false }));
   previewLine.visible = false; previewLine.renderOrder = 996;
   scene.add(previewLine);
@@ -1962,7 +1969,7 @@ window.addEventListener("load", function () {
   scene.add(startDot);
 
   // ===== 状態 =====
-  const state = { tool: "rect", snap: true, activeColor: 0 };
+  const state = { tool: "rect", snap: true, activeColor: -1 };
   // box:  { id, kind:"box", color, c, s, rot, ops:[{type:"add"|"cut", poly:[{x,y,z}...local], dir:{x,y,z}local, h}] }
   // line: { id, kind:"line", color, a, b }
   let entities = [];
@@ -2084,7 +2091,27 @@ window.addEventListener("load", function () {
     }
     return segs;
   }
+  // 円や長方形ツールで作った閉じた輪郭は、そのまま領域として使える
+  function loopRegion(basis, pt) {
+    let best = null, bestArea = Infinity;
+    for (const e of entities) {
+      if (e.kind !== "loop" || e.pts.length < 3) continue;
+      const poly = [];
+      let ok = true;
+      for (const p of e.pts) {
+        const q = to2D(basis, p);
+        if (Math.abs(q.w) > PLANE_TOL) { ok = false; break; }
+        poly.push({ a: q.a, b: q.b });
+      }
+      if (!ok || !pointInPoly(poly, pt)) continue;
+      const area = Math.abs(polyArea2(poly));
+      if (area > 1e-4 && area < bestArea) { bestArea = area; best = poly; }
+    }
+    return best;
+  }
   function findRegion(basis, pt) {
+    const loop = loopRegion(basis, pt);
+    if (loop) return loop;
     const segs = linesOnFace(basis);
     if (segs.length < 3 || segs.length > 60) return null;
     // 端点をまとめてグラフ化
@@ -2133,7 +2160,12 @@ window.addEventListener("load", function () {
   // ===== メッシュ生成 =====
   function disposeEnt(e) {
     for (const key of ["mesh", "edges"]) {
-      if (e[key]) { world.remove(e[key]); e[key].geometry.dispose(); e[key].material.dispose(); e[key] = null; }
+      if (!e[key]) continue;
+      world.remove(e[key]);
+      e[key].geometry.dispose();
+      const m = e[key].material;
+      if (Array.isArray(m)) m.forEach(x => x.dispose()); else m.dispose();
+      e[key] = null;
     }
   }
   // ローカル座標で保持した ops から、ワールドの押し出しジオメトリを作る
@@ -2170,10 +2202,69 @@ window.addEventListener("load", function () {
     g.setIndex(index);
     return g;
   }
+  // 底面が多角形（円など）の立体。base はローカルXZ平面上の輪郭 [{a,b}...]
+  function baseGeometry(e) {
+    let poly = e.base;
+    // シェイプ空間は (b, a) を使う。u=(0,0,1), v=(1,0,0), n=(0,1,0) が右手系になる
+    let pts = poly.map(p => ({ a: p.b, b: p.a }));
+    if (polyArea2(pts) < 0) pts = pts.slice().reverse();
+    const shape = new THREE.Shape(pts.map(p => new THREE.Vector2(p.a, p.b)));
+    const h = e.s.y;
+    const geo = Math.abs(h) < EPS
+      ? new THREE.ShapeGeometry(shape)
+      : new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false });
+    const m = new THREE.Matrix4().makeBasis(V(0, 0, 1), V(1, 0, 0), V(0, 1, 0));
+    m.setPosition(V(0, -h / 2, 0));
+    geo.applyMatrix4(m);
+    return geo;
+  }
+  // 稜線だけを取り出す。CSG の結果には同一平面を分割した継ぎ目やT字接合が残るため、
+  // 「2つの三角形に共有され、かつ折れ角が大きい辺」だけを稜線として扱う。
+  function hardEdges(geo, thresholdDeg) {
+    const g = weld(geo);
+    const idx = g.index, pos = g.attributes.position;
+    const triCount = idx.count / 3;
+    const normals = [];
+    const edgeMap = new Map();
+    const A = V(0, 0, 0), B = V(0, 0, 0), C = V(0, 0, 0), ab = V(0, 0, 0), ac = V(0, 0, 0);
+    for (let t = 0; t < triCount; t++) {
+      const i0 = idx.getX(t * 3), i1 = idx.getX(t * 3 + 1), i2 = idx.getX(t * 3 + 2);
+      A.fromBufferAttribute(pos, i0); B.fromBufferAttribute(pos, i1); C.fromBufferAttribute(pos, i2);
+      ab.subVectors(B, A); ac.subVectors(C, A);
+      const n = new THREE.Vector3().crossVectors(ab, ac);
+      normals.push(n.lengthSq() < 1e-12 ? null : n.normalize());
+      for (const [a, b] of [[i0, i1], [i1, i2], [i2, i0]]) {
+        const key = a < b ? a + "_" + b : b + "_" + a;
+        let rec = edgeMap.get(key);
+        if (!rec) { rec = { a: Math.min(a, b), b: Math.max(a, b), tris: [] }; edgeMap.set(key, rec); }
+        rec.tris.push(t);
+      }
+    }
+    const cosThr = Math.cos((thresholdDeg || 1) * DEG);
+    const verts = [];
+    for (const rec of edgeMap.values()) {
+      if (rec.tris.length !== 2) continue;             // T字接合や継ぎ目は無視
+      const n1 = normals[rec.tris[0]], n2 = normals[rec.tris[1]];
+      if (!n1 || !n2 || n1.dot(n2) >= cosThr) continue; // 平面に近ければ稜線ではない
+      verts.push(pos.getX(rec.a), pos.getY(rec.a), pos.getZ(rec.a));
+      verts.push(pos.getX(rec.b), pos.getY(rec.b), pos.getZ(rec.b));
+    }
+    g.dispose();
+    const out = new THREE.BufferGeometry();
+    out.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
+    return out;
+  }
   function buildBoxGeometry(e) {
     const flat = Math.abs(e.s.y) < EPS;
+    if (e.base && e.base.length >= 3) {
+      const g = baseGeometry(e);
+      if (!(e.ops || []).length) return g;
+      return applyOps(e, g);
+    }
     if (flat) return new THREE.PlaneGeometry(Math.abs(e.s.x), Math.abs(e.s.z));
-    let geo = new THREE.BoxGeometry(e.s.x, e.s.y, e.s.z);
+    return applyOps(e, new THREE.BoxGeometry(e.s.x, e.s.y, e.s.z));
+  }
+  function applyOps(e, geo) {
     const ops = e.ops || [];
     if (!ops.length) return geo;
     // CSG は「ワールド座標のメッシュ」を扱うので、いったん箱もワールドに置く
@@ -2197,13 +2288,73 @@ window.addEventListener("load", function () {
     baseMesh.geometry.dispose();
     return out;
   }
+  // 塗られた面ごとにマテリアルを割り当てる。三角形を面ごとに並べ替えてグループ化する。
+  function applyPaints(geo, e) {
+    const paints = e.paints || [];
+    if (!paints.length) return null;
+    const g = geo.index ? geo.toNonIndexed() : geo.clone();
+    const pos = g.attributes.position, nrm = g.attributes.normal;
+    const triCount = Math.floor(pos.count / 3);
+    const A = V(0, 0, 0), B = V(0, 0, 0), C = V(0, 0, 0);
+    const ab = V(0, 0, 0), ac = V(0, 0, 0), n = V(0, 0, 0), ctr = V(0, 0, 0);
+    const pn = paints.map(p => V(p.n.x, p.n.y, p.n.z).normalize());
+    const matIdx = new Array(triCount).fill(0);
+    for (let t = 0; t < triCount; t++) {
+      A.fromBufferAttribute(pos, t * 3); B.fromBufferAttribute(pos, t * 3 + 1); C.fromBufferAttribute(pos, t * 3 + 2);
+      ab.subVectors(B, A); ac.subVectors(C, A);
+      n.crossVectors(ab, ac);
+      if (n.lengthSq() < 1e-12) continue;
+      n.normalize();
+      ctr.copy(A).add(B).add(C).multiplyScalar(1 / 3);
+      for (let i = 0; i < paints.length; i++) {
+        if (n.dot(pn[i]) > 0.999 && Math.abs(ctr.dot(pn[i]) - paints[i].d) < 0.08) {
+          const c = paints[i].color;
+          matIdx[t] = (c == null || c < 0) ? 0 : c + 1;
+          break;
+        }
+      }
+    }
+    const order = Array.from({ length: triCount }, (_, i) => i).sort((x, y) => matIdx[x] - matIdx[y]);
+    const outPos = new Float32Array(triCount * 9);
+    const outNrm = nrm ? new Float32Array(triCount * 9) : null;
+    const groups = [];
+    let curMat = -1, start = 0, w = 0;
+    order.forEach((t, i) => {
+      if (matIdx[t] !== curMat) {
+        if (curMat >= 0) groups.push([start, i * 3 - start, curMat]);
+        curMat = matIdx[t]; start = i * 3;
+      }
+      for (let k = 0; k < 3; k++) {
+        const j = t * 3 + k;
+        outPos[w] = pos.getX(j); outPos[w + 1] = pos.getY(j); outPos[w + 2] = pos.getZ(j);
+        if (outNrm) { outNrm[w] = nrm.getX(j); outNrm[w + 1] = nrm.getY(j); outNrm[w + 2] = nrm.getZ(j); }
+        w += 3;
+      }
+    });
+    if (curMat >= 0) groups.push([start, triCount * 3 - start, curMat]);
+    const out = new THREE.BufferGeometry();
+    out.setAttribute("position", new THREE.Float32BufferAttribute(outPos, 3));
+    if (outNrm) out.setAttribute("normal", new THREE.Float32BufferAttribute(outNrm, 3));
+    else out.computeVertexNormals();
+    for (const [s, c, m] of groups) out.addGroup(s, c, m);
+    if (g !== geo) g.dispose();
+    return out;
+  }
+  function makeMaterials(e, flat) {
+    const side = flat ? THREE.DoubleSide : THREE.FrontSide;
+    return [colorOf(e.color), ...PALETTE].map(c => new THREE.MeshStandardMaterial({
+      color: new THREE.Color(c), roughness: 0.85, metalness: 0, side }));
+  }
   function buildEnt(e) {
     disposeEnt(e);
-    const col = new THREE.Color(PALETTE[e.color ?? 0]);
-    if (e.kind === "line") {
-      const g = new THREE.BufferGeometry().setFromPoints([
-        V(e.a.x, e.a.y, e.a.z), V(e.b.x, e.b.y, e.b.z)]);
-      const m = new THREE.Line(g, new THREE.LineBasicMaterial({ color: e === selected ? 0xffcc44 : col }));
+    const col = new THREE.Color(colorOf(e.color));
+    if (e.kind === "line" || e.kind === "loop") {
+      const pts = e.kind === "line"
+        ? [V(e.a.x, e.a.y, e.a.z), V(e.b.x, e.b.y, e.b.z)]
+        : e.pts.map(p => V(p.x, p.y, p.z));
+      const g = new THREE.BufferGeometry().setFromPoints(pts);
+      const matL = new THREE.LineBasicMaterial({ color: e === selected ? 0xffcc44 : col });
+      const m = e.kind === "line" ? new THREE.Line(g, matL) : new THREE.LineLoop(g, matL);
       m.userData.ent = e;
       world.add(m); e.mesh = m;
       return;
@@ -2211,8 +2362,11 @@ window.addEventListener("load", function () {
     const zeros = [e.s.x, e.s.y, e.s.z].filter(v => Math.abs(v) < EPS).length;
     if (zeros >= 2) return;
     const flat = Math.abs(e.s.y) < EPS;
-    const geo = buildBoxGeometry(e);
-    const mat = new THREE.MeshStandardMaterial({
+    let geo = buildBoxGeometry(e);
+    const painted = applyPaints(geo, e);
+    let mat;
+    if (painted) { geo.dispose(); geo = painted; mat = makeMaterials(e, flat); }
+    else mat = new THREE.MeshStandardMaterial({
       color: col, roughness: 0.85, metalness: 0, side: flat ? THREE.DoubleSide : THREE.FrontSide });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(e.c.x, e.c.y, e.c.z);
@@ -2222,12 +2376,11 @@ window.addEventListener("load", function () {
     mesh.userData.ent = e;
     world.add(mesh); e.mesh = mesh;
 
-    const hasOps = (e.ops || []).length > 0;
-    let edgeSrc = geo, welded = null;
-    if (hasOps) { welded = weld(geo); edgeSrc = welded; }
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(edgeSrc),
+    // 円のように分割数が多い輪郭は、分割線を稜線として拾わないよう角度を緩める
+    const thr = (e.base && e.base.length > 8) ? (360 / e.base.length) * 1.5 : 20;
+    const edgeGeo = flat ? new THREE.EdgesGeometry(geo, 1) : hardEdges(geo, thr);
+    const edges = new THREE.LineSegments(edgeGeo,
       new THREE.LineBasicMaterial({ color: e === selected ? 0xffcc44 : 0x1b1b20 }));
-    if (welded) welded.dispose();
     edges.position.copy(mesh.position);
     edges.quaternion.copy(mesh.quaternion);
     world.add(edges); e.edges = edges;
@@ -2235,25 +2388,37 @@ window.addEventListener("load", function () {
   function rebuildAll() { for (const e of entities) buildEnt(e); }
   function refreshHighlight() {
     for (const e of entities) {
-      if (e.kind === "line" && e.mesh) e.mesh.material.color.set(e === selected ? 0xffcc44 : PALETTE[e.color ?? 0]);
+      if ((e.kind === "line" || e.kind === "loop") && e.mesh) e.mesh.material.color.set(e === selected ? 0xffcc44 : colorOf(e.color));
       else if (e.edges) e.edges.material.color.set(e === selected ? 0xffcc44 : 0x1b1b20);
     }
   }
 
   // ===== 履歴 =====
   function serialize() {
-    return JSON.stringify(entities.map(e => e.kind === "line"
-      ? { id: e.id, kind: "line", color: e.color, a: { ...e.a }, b: { ...e.b } }
-      : { id: e.id, kind: "box", color: e.color, c: { ...e.c }, s: { ...e.s }, rot: e.rot || 0,
-          ops: (e.ops || []).map(o => ({ type: o.type, h: o.h, dir: { ...o.dir }, poly: o.poly.map(p => ({ ...p })) })) }));
+    return JSON.stringify(entities.map(e => {
+      if (e.kind === "line") return { id: e.id, kind: "line", color: e.color, a: { ...e.a }, b: { ...e.b } };
+      if (e.kind === "loop") return { id: e.id, kind: "loop", color: e.color, pts: e.pts.map(p => ({ ...p })) };
+      return {
+        id: e.id, kind: "box", color: e.color, c: { ...e.c }, s: { ...e.s }, rot: e.rot || 0,
+        base: e.base ? e.base.map(p => ({ ...p })) : null,
+        paints: (e.paints || []).map(p => ({ n: { ...p.n }, d: p.d, color: p.color })),
+        ops: (e.ops || []).map(o => ({ type: o.type, h: o.h, dir: { ...o.dir }, poly: o.poly.map(p => ({ ...p })) })),
+      };
+    }));
   }
   function loadFrom(json) {
     for (const e of entities) disposeEnt(e);
-    entities = JSON.parse(json).map(d => d.kind === "line"
-      ? { id: d.id, kind: "line", color: d.color ?? 0, a: { ...d.a }, b: { ...d.b }, mesh: null, edges: null }
-      : { id: d.id, kind: "box", color: d.color ?? 0, c: { ...d.c }, s: { ...d.s }, rot: d.rot || 0,
-          ops: (d.ops || []).map(o => ({ type: o.type, h: o.h, dir: { ...o.dir }, poly: o.poly.map(p => ({ ...p })) })),
-          mesh: null, edges: null });
+    entities = JSON.parse(json).map(d => {
+      if (d.kind === "line") return { id: d.id, kind: "line", color: d.color ?? -1, a: { ...d.a }, b: { ...d.b }, mesh: null, edges: null };
+      if (d.kind === "loop") return { id: d.id, kind: "loop", color: d.color ?? -1, pts: d.pts.map(p => ({ ...p })), mesh: null, edges: null };
+      return {
+        id: d.id, kind: "box", color: d.color ?? -1, c: { ...d.c }, s: { ...d.s }, rot: d.rot || 0,
+        base: d.base ? d.base.map(p => ({ ...p })) : null,
+        paints: (d.paints || []).map(p => ({ n: { ...p.n }, d: p.d, color: p.color })),
+        ops: (d.ops || []).map(o => ({ type: o.type, h: o.h, dir: { ...o.dir }, poly: o.poly.map(p => ({ ...p })) })),
+        mesh: null, edges: null,
+      };
+    });
     nextId = entities.reduce((m, e) => Math.max(m, e.id), 0) + 1;
     selected = null;
     rebuildAll(); updateUI();
@@ -2293,7 +2458,37 @@ window.addEventListener("load", function () {
   }
 
   // ===== ドラッグ状態 =====
+  const CIRCLE_SEGMENTS = 32;
+  function circlePoly(cx, cy, r) {
+    const pts = [];
+    for (let i = 0; i < CIRCLE_SEGMENTS; i++) {
+      const t = (i / CIRCLE_SEGMENTS) * Math.PI * 2;
+      pts.push({ a: cx + r * Math.cos(t), b: cy + r * Math.sin(t) });
+    }
+    return pts;
+  }
+  // 面をクリックしてその面だけ塗る。無色を選んでいれば塗りを消す。
+  function paintFace(hit) {
+    const e = hit.object.userData.ent;
+    if (!isSolid(e)) return;
+    const wn = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+    const ln = wn.applyAxisAngle(YAXIS, -(e.rot || 0) * DEG).normalize();
+    const lp = toLocal(e, hit.point);
+    const d = lp.dot(ln);
+    pushUndo();
+    if (!e.paints) e.paints = [];
+    // 同じ平面の塗りは置き換える
+    e.paints = e.paints.filter(p => {
+      const pn = V(p.n.x, p.n.y, p.n.z);
+      return !(pn.dot(ln) > 0.999 && Math.abs(p.d - d) < 0.08);
+    });
+    if (state.activeColor >= 0) e.paints.push({ n: objV(ln), d, color: state.activeColor });
+    buildEnt(e); refreshHighlight(); updateUI();
+    setNote(state.activeColor >= 0 ? "面を塗りました" : "塗りを消しました");
+  }
+
   let rectDrag = null;   // 地面: {p0, raw} / 面: {basis, p0:{a,b}}
+  let circleDrag = null; // 地面: {basis:null, c:{x,z}, r} / 面: {basis, c:{a,b}, r}
   let pushDrag = null;
   let lineDraft = null;
 
@@ -2403,7 +2598,7 @@ window.addEventListener("load", function () {
     controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
     hoverMesh.visible = false; previewLine.visible = false;
     clearRegion(); clearGhost(); endLine();
-    rectDrag = null;
+    rectDrag = null; circleDrag = null;
     if (t !== "select") { selected = null; refreshHighlight(); }
     setTarget("—");
     updateUI();
@@ -2449,6 +2644,27 @@ window.addEventListener("load", function () {
       const p = groundHit(); if (!p) return;
       rectDrag = { p0: { x: snapVal(p.x), z: snapVal(p.z) }, raw: { x: p.x, z: p.z } };
       canvas.setPointerCapture(ev.pointerId);
+
+    } else if (state.tool === "circle") {
+      const hit = pickBox();
+      if (hit) {
+        const e = hit.object.userData.ent;
+        const fi = faceInfo(hit);
+        if (fi) {
+          const basis = faceBasis(e, fi.axis, fi.sign);
+          const q = to2D(basis, hit.point);
+          circleDrag = { basis, c: { a: snapVal(q.a), b: snapVal(q.b) }, r: 0 };
+          canvas.setPointerCapture(ev.pointerId);
+          return;
+        }
+      }
+      const p = groundHit(); if (!p) return;
+      circleDrag = { basis: null, c: { x: snapVal(p.x), z: snapVal(p.z) }, r: 0 };
+      canvas.setPointerCapture(ev.pointerId);
+
+    } else if (state.tool === "paint") {
+      const hit = pickBox(); if (!hit) return;
+      paintFace(hit);
 
     } else if (state.tool === "line") {
       if (!lineDraft) {
@@ -2508,6 +2724,21 @@ window.addEventListener("load", function () {
       }
       return;
     }
+    if (circleDrag) {
+      const cd = circleDrag;
+      if (cd.basis) {
+        const p = planeFromBasis(cd.basis); if (!p) return;
+        const q = to2D(cd.basis, p);
+        cd.r = Math.max(0, snapVal(Math.hypot(q.a - cd.c.a, q.b - cd.c.b)));
+        setPreviewPoly(circlePoly(cd.c.a, cd.c.b, cd.r).map(t => to3D(cd.basis, t.a, t.b, 0.05)));
+      } else {
+        const p = groundHit(); if (!p) return;
+        cd.r = Math.max(0, snapVal(Math.hypot(p.x - cd.c.x, p.z - cd.c.z)));
+        setPreviewPoly(circlePoly(cd.c.x, cd.c.z, cd.r).map(t => V(t.a, 0.05, t.b)));
+      }
+      setNote("半径 " + round2(cd.r));
+      return;
+    }
     if (pushDrag) {
       const d = pushDrag;
       if (d.sLen2 < 1e-3) return;
@@ -2554,6 +2785,16 @@ window.addEventListener("load", function () {
           const basis = faceBasis(e, fi.axis, fi.sign);
           const region = isSolid(e) ? findRegion(basis, to2D(basis, hit.point)) : null;
           if (region) { hoverMesh.visible = false; showRegion(region, basis); setTarget("領域"); }
+          else if (e.base && fi.axis === "y") {
+            // 円柱などは輪郭どおりにハイライトする
+            hoverMesh.visible = false;
+            const y = fi.sign > 0 ? e.s.y / 2 : -e.s.y / 2;
+            showRegion(e.base.map(p => {
+              const q = to2D(basis, toWorld(e, { x: p.a, y, z: p.b }));
+              return { a: q.a, b: q.b };
+            }), basis);
+            setTarget("面");
+          }
           else { placeHover(e, fi.axis, fi.sign); setTarget("面"); }
           return;
         }
@@ -2587,12 +2828,35 @@ window.addEventListener("load", function () {
             const e = {
               id: nextId++, kind: "box", color: state.activeColor,
               c: { x: (minx + maxx) / 2, y: 0, z: (minz + maxz) / 2 },
-              s: { x: maxx - minx, y: 0, z: maxz - minz }, rot: 0, ops: [], mesh: null, edges: null };
+              s: { x: maxx - minx, y: 0, z: maxz - minz }, rot: 0,
+              base: null, paints: [], ops: [], mesh: null, edges: null };
             entities.push(e); buildEnt(e);
           }
         }
       }
       rectDrag = null; previewLine.visible = false; setNote(""); updateUI();
+    }
+
+    if (circleDrag) {
+      const cd = circleDrag;
+      if (cd.r > EPS) {
+        pushUndo();
+        if (cd.basis) {
+          // 面の上 → 丸い領域（閉じた輪郭）
+          const pts = circlePoly(cd.c.a, cd.c.b, cd.r).map(t => objV(to3D(cd.basis, t.a, t.b, 0)));
+          const e = { id: nextId++, kind: "loop", color: state.activeColor, pts, mesh: null, edges: null };
+          entities.push(e); buildEnt(e);
+        } else {
+          // 地面 → 円柱のもと（高さ0の円盤。プッシュ/プルで立ち上げる）
+          const base = circlePoly(0, 0, cd.r);
+          const e = {
+            id: nextId++, kind: "box", color: state.activeColor,
+            c: { x: cd.c.x, y: 0, z: cd.c.z }, s: { x: cd.r * 2, y: 0, z: cd.r * 2 }, rot: 0,
+            base, paints: [], ops: [], mesh: null, edges: null };
+          entities.push(e); buildEnt(e);
+        }
+      }
+      circleDrag = null; previewLine.visible = false; setNote(""); updateUI();
     }
 
     if (pushDrag) {
@@ -2655,21 +2919,22 @@ window.addEventListener("load", function () {
     return { mina, minb, maxa, maxb };
   }
   function setPreviewRectOnFace(basis, r) {
-    const pts = [
+    setPreviewPoly([
       to3D(basis, r.mina, r.minb, 0.05), to3D(basis, r.maxa, r.minb, 0.05),
-      to3D(basis, r.maxa, r.maxb, 0.05), to3D(basis, r.mina, r.maxb, 0.05)];
-    const arr = previewGeo.attributes.position.array;
-    for (let i = 0; i < 4; i++) { arr[i * 3] = pts[i].x; arr[i * 3 + 1] = pts[i].y; arr[i * 3 + 2] = pts[i].z; }
-    previewGeo.attributes.position.needsUpdate = true;
-    previewLine.visible = true;
+      to3D(basis, r.maxa, r.maxb, 0.05), to3D(basis, r.mina, r.maxb, 0.05)]);
   }
   function setPreviewRect(minx, minz, maxx, maxz) {
     const y = 0.05;
+    setPreviewPoly([V(minx, y, minz), V(maxx, y, minz), V(maxx, y, maxz), V(minx, y, maxz)]);
+  }
+  // 任意頂点数の閉じた輪郭をプレビュー表示する
+  function setPreviewPoly(pts) {
     const arr = previewGeo.attributes.position.array;
-    const pts = [[minx, y, minz], [maxx, y, minz], [maxx, y, maxz], [minx, y, maxz]];
-    for (let i = 0; i < 4; i++) { arr[i * 3] = pts[i][0]; arr[i * 3 + 1] = pts[i][1]; arr[i * 3 + 2] = pts[i][2]; }
+    const n = Math.min(pts.length, arr.length / 3);
+    for (let i = 0; i < n; i++) { arr[i * 3] = pts[i].x; arr[i * 3 + 1] = pts[i].y; arr[i * 3 + 2] = pts[i].z; }
     previewGeo.attributes.position.needsUpdate = true;
-    previewLine.visible = true;
+    previewGeo.setDrawRange(0, n);
+    previewLine.visible = n >= 2;
   }
 
   function deleteSelected() {
@@ -2681,7 +2946,7 @@ window.addEventListener("load", function () {
   }
 
   // ===== UI =====
-  const toolNames = { orbit: "回転", rect: "長方形", line: "線", push: "プッシュ/プル", select: "選択" };
+  const toolNames = { orbit: "回転", rect: "長方形", circle: "円", line: "線", push: "プッシュ/プル", paint: "塗る", select: "選択" };
   function setNote(t) { document.getElementById("f-note").textContent = t; }
   function setLock(l) { document.getElementById("f-lock").textContent = l ? l.toUpperCase() + "軸" : "なし"; }
   function setTarget(t) { document.getElementById("f-target").textContent = t; }
@@ -2735,6 +3000,11 @@ window.addEventListener("load", function () {
       const rot = num("in-rot") || 0;
       if (nx === selected.s.x && nz === selected.s.z && ny === selected.s.y && rot === (selected.rot || 0)) return;
       pushUndo();
+      // 多角形の底面（円柱など）は輪郭も一緒に拡大縮小する
+      if (selected.base && selected.s.x > EPS && selected.s.z > EPS) {
+        const fx = nx / selected.s.x, fz = nz / selected.s.z;
+        selected.base = selected.base.map(p => ({ a: p.a * fx, b: p.b * fz }));
+      }
       const bottom = selected.c.y - selected.s.y / 2;
       selected.s = { x: nx, y: ny, z: nz };
       selected.c.y = bottom + ny / 2;
@@ -2791,9 +3061,10 @@ window.addEventListener("load", function () {
         pushUndo();
         const conv = list.map(d => {
           if (d.kind) return d;
-          return { id: d.id, kind: "box", color: d.color ?? 0,
+          return { id: d.id, kind: "box", color: d.color ?? -1,
             c: { x: (d.min.x + d.max.x) / 2, y: (d.min.y + d.max.y) / 2, z: (d.min.z + d.max.z) / 2 },
-            s: { x: d.max.x - d.min.x, y: d.max.y - d.min.y, z: d.max.z - d.min.z }, rot: 0, ops: [] };
+            s: { x: d.max.x - d.min.x, y: d.max.y - d.min.y, z: d.max.z - d.min.z },
+            rot: 0, base: null, paints: [], ops: [] };
         });
         loadFrom(JSON.stringify(conv));
       } catch (err) { alert("読込に失敗しました: " + err.message); }
@@ -2873,9 +3144,12 @@ window.addEventListener("load", function () {
     const k = ev.key.toLowerCase();
     if (k === "o") setTool("orbit");
     if (k === "r") setTool("rect");
+    if (k === "c") setTool("circle");
     if (k === "l") setTool("line");
     if (k === "e") setTool("push");
+    if (k === "b") setTool("paint");
     if (k === "v") setTool("select");
+    if (ev.key === "0") setColor(-1);
     if (ev.key === "1") setColor(0);
     if (ev.key === "2") setColor(1);
     if (ev.key === "3") setColor(2);

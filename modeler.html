@@ -49,7 +49,7 @@
     position: absolute; left: 12px; bottom: 12px;
     background: rgba(0,0,0,.55); border: 1px solid var(--line); border-radius: 6px;
     padding: 8px 10px; font-size: 11.5px; line-height: 1.6; color: var(--muted);
-    max-width: 300px; pointer-events: none;
+    max-width: 320px; pointer-events: none;
   }
   .hint kbd {
     background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px;
@@ -60,7 +60,6 @@
   .swatch { width: 24px; height: 24px; padding: 0; border-radius: 6px; border: 2px solid var(--line); cursor: pointer; }
   .swatch.active { border-color: #fff; box-shadow: 0 0 0 2px var(--accent); }
 
-  /* 数値入力パネル */
   #inspect {
     position: absolute; right: 12px; top: 12px; width: 190px;
     background: rgba(38,38,46,.96); border: 1px solid var(--line); border-radius: 8px;
@@ -88,9 +87,9 @@
   <div class="sep"></div>
   <div class="group" id="tools">
     <button data-tool="orbit" title="視点操作 (O)">🔄 回転</button>
-    <button data-tool="rect" class="active" title="長方形を描く (R)">▭ 長方形</button>
+    <button data-tool="rect" class="active" title="長方形: 地面なら立体、面の上なら領域 (R)">▭ 長方形</button>
     <button data-tool="line" title="線を引く (L)">╱ 線</button>
-    <button data-tool="push" title="面を押す/引く (E)">⇅ プッシュ/プル</button>
+    <button data-tool="push" title="面や線で囲んだ領域を押す/引く (E)">⇅ プッシュ/プル</button>
     <button data-tool="select" title="選択 (V)">▲ 選択</button>
   </div>
   <div class="sep"></div>
@@ -140,21 +139,23 @@
 
   <div class="hint">
     <div><kbd>右ドラッグ</kbd> 回転 / <kbd>中ドラッグ</kbd> 移動 / <kbd>ホイール</kbd> ズーム</div>
-    <div><b>長方形</b>: 地面をドラッグ / <b>プッシュ/プル</b>: 面をドラッグ</div>
+    <div><b>長方形</b>: 地面=立体 / 立体の面の上=領域（線4本）</div>
     <div><b>線</b>: クリック→クリック。<kbd>X</kbd><kbd>Y</kbd><kbd>Z</kbd> で軸に平行固定</div>
-    <div>数字 <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> で色 / <kbd>Delete</kbd> 削除</div>
+    <div><b>プッシュ/プル</b>: 面をドラッグ。線で囲んだ領域の中なら
+      その領域だけを押し引き（外=出っ張り / 内=くぼみ・穴）</div>
   </div>
 </main>
 
 <footer>
   <span>ツール: <b id="f-tool">長方形</b></span>
+  <span>対象: <b id="f-target">—</b></span>
   <span>拘束: <b id="f-lock">なし</b></span>
   <span>寸法: <b id="f-dim">—</b></span>
   <span>要素数: <b id="f-count">0</b></span>
   <span id="f-note" style="color:var(--accent)"></span>
 </footer>
 
-<!-- three.js r128 (MIT) を同梱: 外部依存なしで動作 -->
+<!-- three.js r128 (MIT) -->
 <script>
 /**
  * @license
@@ -1213,10 +1214,655 @@
 } )();
 
 </script>
+<!-- three-csg-ts (MIT) -->
+<script>
+// three-csg-ts 3.2.0 (MIT) — CommonJS modules bundled for browser use
+(function (global) {
+  var modules = {
+"./Vector": function(module, exports, require) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.Vector = void 0;
+const three_1 = require("three");
+/**
+ * Represents a 3D vector.
+ */
+class Vector {
+    constructor(x = 0, y = 0, z = 0) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+    }
+    copy(v) {
+        this.x = v.x;
+        this.y = v.y;
+        this.z = v.z;
+        return this;
+    }
+    clone() {
+        return new Vector(this.x, this.y, this.z);
+    }
+    negate() {
+        this.x *= -1;
+        this.y *= -1;
+        this.z *= -1;
+        return this;
+    }
+    add(a) {
+        this.x += a.x;
+        this.y += a.y;
+        this.z += a.z;
+        return this;
+    }
+    sub(a) {
+        this.x -= a.x;
+        this.y -= a.y;
+        this.z -= a.z;
+        return this;
+    }
+    times(a) {
+        this.x *= a;
+        this.y *= a;
+        this.z *= a;
+        return this;
+    }
+    dividedBy(a) {
+        this.x /= a;
+        this.y /= a;
+        this.z /= a;
+        return this;
+    }
+    lerp(a, t) {
+        return this.add(new Vector().copy(a).sub(this).times(t));
+    }
+    unit() {
+        return this.dividedBy(this.length());
+    }
+    length() {
+        return Math.sqrt(Math.pow(this.x, 2) + Math.pow(this.y, 2) + Math.pow(this.z, 2));
+    }
+    normalize() {
+        return this.unit();
+    }
+    cross(b) {
+        const a = this.clone();
+        const ax = a.x, ay = a.y, az = a.z;
+        const bx = b.x, by = b.y, bz = b.z;
+        this.x = ay * bz - az * by;
+        this.y = az * bx - ax * bz;
+        this.z = ax * by - ay * bx;
+        return this;
+    }
+    dot(b) {
+        return this.x * b.x + this.y * b.y + this.z * b.z;
+    }
+    toVector3() {
+        return new three_1.Vector3(this.x, this.y, this.z);
+    }
+}
+exports.Vector = Vector;
+
+},
+"./Vertex": function(module, exports, require) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.Vertex = void 0;
+const Vector_1 = require("./Vector");
+/**
+ * Represents a vertex of a polygon. Use your own vertex class instead of this
+ * one to provide additional features like texture coordinates and vertex
+ * colors. Custom vertex classes need to provide a `pos` property and `clone()`,
+ * `flip()`, and `interpolate()` methods that behave analogous to the ones
+ * defined by `CSG.Vertex`. This class provides `normal` so convenience
+ * functions like `CSG.sphere()` can return a smooth vertex normal, but `normal`
+ * is not used anywhere else.
+ */
+class Vertex {
+    constructor(pos, normal, uv, color) {
+        this.pos = new Vector_1.Vector().copy(pos);
+        this.normal = new Vector_1.Vector().copy(normal);
+        this.uv = new Vector_1.Vector().copy(uv);
+        this.uv.z = 0;
+        color && (this.color = new Vector_1.Vector().copy(color));
+    }
+    clone() {
+        return new Vertex(this.pos, this.normal, this.uv, this.color);
+    }
+    // Invert all orientation-specific data (e.g. vertex normal). Called when the
+    // orientation of a polygon is flipped.
+    flip() {
+        this.normal.negate();
+    }
+    // Create a new vertex between this vertex and `other` by linearly
+    // interpolating all properties using a parameter of `t`. Subclasses should
+    // override this to interpolate additional properties.
+    interpolate(other, t) {
+        return new Vertex(this.pos.clone().lerp(other.pos, t), this.normal.clone().lerp(other.normal, t), this.uv.clone().lerp(other.uv, t), this.color && other.color && this.color.clone().lerp(other.color, t));
+    }
+}
+exports.Vertex = Vertex;
+
+},
+"./Plane": function(module, exports, require) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.Plane = void 0;
+const Polygon_1 = require("./Polygon");
+const Vector_1 = require("./Vector");
+/**
+ * Represents a plane in 3D space.
+ */
+class Plane {
+    constructor(normal, w) {
+        this.normal = normal;
+        this.w = w;
+        this.normal = normal;
+        this.w = w;
+    }
+    clone() {
+        return new Plane(this.normal.clone(), this.w);
+    }
+    flip() {
+        this.normal.negate();
+        this.w = -this.w;
+    }
+    // Split `polygon` by this plane if needed, then put the polygon or polygon
+    // fragments in the appropriate lists. Coplanar polygons go into either
+    // `coplanarFront` or `coplanarBack` depending on their orientation with
+    // respect to this plane. Polygons in front or in back of this plane go into
+    // either `front` or `back`.
+    splitPolygon(polygon, coplanarFront, coplanarBack, front, back) {
+        const COPLANAR = 0;
+        const FRONT = 1;
+        const BACK = 2;
+        const SPANNING = 3;
+        // Classify each point as well as the entire polygon into one of the above
+        // four classes.
+        let polygonType = 0;
+        const types = [];
+        for (let i = 0; i < polygon.vertices.length; i++) {
+            const t = this.normal.dot(polygon.vertices[i].pos) - this.w;
+            const type = t < -Plane.EPSILON ? BACK : t > Plane.EPSILON ? FRONT : COPLANAR;
+            polygonType |= type;
+            types.push(type);
+        }
+        // Put the polygon in the correct list, splitting it when necessary.
+        switch (polygonType) {
+            case COPLANAR:
+                (this.normal.dot(polygon.plane.normal) > 0
+                    ? coplanarFront
+                    : coplanarBack).push(polygon);
+                break;
+            case FRONT:
+                front.push(polygon);
+                break;
+            case BACK:
+                back.push(polygon);
+                break;
+            case SPANNING: {
+                const f = [], b = [];
+                for (let i = 0; i < polygon.vertices.length; i++) {
+                    const j = (i + 1) % polygon.vertices.length;
+                    const ti = types[i], tj = types[j];
+                    const vi = polygon.vertices[i], vj = polygon.vertices[j];
+                    if (ti != BACK)
+                        f.push(vi);
+                    if (ti != FRONT)
+                        b.push(ti != BACK ? vi.clone() : vi);
+                    if ((ti | tj) == SPANNING) {
+                        const t = (this.w - this.normal.dot(vi.pos)) /
+                            this.normal.dot(new Vector_1.Vector().copy(vj.pos).sub(vi.pos));
+                        const v = vi.interpolate(vj, t);
+                        f.push(v);
+                        b.push(v.clone());
+                    }
+                }
+                if (f.length >= 3)
+                    front.push(new Polygon_1.Polygon(f, polygon.shared));
+                if (b.length >= 3)
+                    back.push(new Polygon_1.Polygon(b, polygon.shared));
+                break;
+            }
+        }
+    }
+    static fromPoints(a, b, c) {
+        const n = new Vector_1.Vector()
+            .copy(b)
+            .sub(a)
+            .cross(new Vector_1.Vector().copy(c).sub(a))
+            .normalize();
+        return new Plane(n.clone(), n.dot(a));
+    }
+}
+exports.Plane = Plane;
+Plane.EPSILON = 1e-5;
+
+},
+"./Polygon": function(module, exports, require) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.Polygon = void 0;
+const Plane_1 = require("./Plane");
+/**
+ * Represents a convex polygon. The vertices used to initialize a polygon must
+ * be coplanar and form a convex loop. They do not have to be `Vertex`
+ * instances but they must behave similarly (duck typing can be used for
+ * customization).
+ *
+ * Each convex polygon has a `shared` property, which is shared between all
+ * polygons that are clones of each other or were split from the same polygon.
+ * This can be used to define per-polygon properties (such as surface color).
+ */
+class Polygon {
+    constructor(vertices, shared) {
+        this.vertices = vertices;
+        this.shared = shared;
+        this.plane = Plane_1.Plane.fromPoints(vertices[0].pos, vertices[1].pos, vertices[2].pos);
+    }
+    clone() {
+        return new Polygon(this.vertices.map((v) => v.clone()), this.shared);
+    }
+    flip() {
+        this.vertices.reverse().map((v) => v.flip());
+        this.plane.flip();
+    }
+}
+exports.Polygon = Polygon;
+
+},
+"./Node": function(module, exports, require) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.Node = void 0;
+/**
+ * Holds a node in a BSP tree. A BSP tree is built from a collection of polygons
+ * by picking a polygon to split along. That polygon (and all other coplanar
+ * polygons) are added directly to that node and the other polygons are added to
+ * the front and/or back subtrees. This is not a leafy BSP tree since there is
+ * no distinction between internal and leaf nodes.
+ */
+class Node {
+    constructor(polygons) {
+        this.plane = null;
+        this.front = null;
+        this.back = null;
+        this.polygons = [];
+        if (polygons)
+            this.build(polygons);
+    }
+    clone() {
+        const node = new Node();
+        node.plane = this.plane && this.plane.clone();
+        node.front = this.front && this.front.clone();
+        node.back = this.back && this.back.clone();
+        node.polygons = this.polygons.map((p) => p.clone());
+        return node;
+    }
+    // Convert solid space to empty space and empty space to solid space.
+    invert() {
+        for (let i = 0; i < this.polygons.length; i++)
+            this.polygons[i].flip();
+        this.plane && this.plane.flip();
+        this.front && this.front.invert();
+        this.back && this.back.invert();
+        const temp = this.front;
+        this.front = this.back;
+        this.back = temp;
+    }
+    // Recursively remove all polygons in `polygons` that are inside this BSP
+    // tree.
+    clipPolygons(polygons) {
+        if (!this.plane)
+            return polygons.slice();
+        let front = new Array(), back = new Array();
+        for (let i = 0; i < polygons.length; i++) {
+            this.plane.splitPolygon(polygons[i], front, back, front, back);
+        }
+        if (this.front)
+            front = this.front.clipPolygons(front);
+        this.back ? (back = this.back.clipPolygons(back)) : (back = []);
+        return front.concat(back);
+    }
+    // Remove all polygons in this BSP tree that are inside the other BSP tree
+    // `bsp`.
+    clipTo(bsp) {
+        this.polygons = bsp.clipPolygons(this.polygons);
+        if (this.front)
+            this.front.clipTo(bsp);
+        if (this.back)
+            this.back.clipTo(bsp);
+    }
+    // Return a list of all polygons in this BSP tree.
+    allPolygons() {
+        let polygons = this.polygons.slice();
+        if (this.front)
+            polygons = polygons.concat(this.front.allPolygons());
+        if (this.back)
+            polygons = polygons.concat(this.back.allPolygons());
+        return polygons;
+    }
+    // Build a BSP tree out of `polygons`. When called on an existing tree, the
+    // new polygons are filtered down to the bottom of the tree and become new
+    // nodes there. Each set of polygons is partitioned using the first polygon
+    // (no heuristic is used to pick a good split).
+    build(polygons) {
+        if (!polygons.length)
+            return;
+        if (!this.plane)
+            this.plane = polygons[0].plane.clone();
+        const front = [], back = [];
+        for (let i = 0; i < polygons.length; i++) {
+            this.plane.splitPolygon(polygons[i], this.polygons, this.polygons, front, back);
+        }
+        if (front.length) {
+            if (!this.front)
+                this.front = new Node();
+            this.front.build(front);
+        }
+        if (back.length) {
+            if (!this.back)
+                this.back = new Node();
+            this.back.build(back);
+        }
+    }
+}
+exports.Node = Node;
+
+},
+"./NBuf": function(module, exports, require) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.NBuf2 = exports.NBuf3 = void 0;
+class NBuf3 {
+    constructor(ct) {
+        this.top = 0;
+        this.array = new Float32Array(ct);
+    }
+    write(v) {
+        this.array[this.top++] = v.x;
+        this.array[this.top++] = v.y;
+        this.array[this.top++] = v.z;
+    }
+}
+exports.NBuf3 = NBuf3;
+class NBuf2 {
+    constructor(ct) {
+        this.top = 0;
+        this.array = new Float32Array(ct);
+    }
+    write(v) {
+        this.array[this.top++] = v.x;
+        this.array[this.top++] = v.y;
+    }
+}
+exports.NBuf2 = NBuf2;
+
+},
+"./CSG": function(module, exports, require) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.CSG = void 0;
+const three_1 = require("three");
+const NBuf_1 = require("./NBuf");
+const Node_1 = require("./Node");
+const Polygon_1 = require("./Polygon");
+const Vector_1 = require("./Vector");
+const Vertex_1 = require("./Vertex");
+/**
+ * Holds a binary space partition tree representing a 3D solid. Two solids can
+ * be combined using the `union()`, `subtract()`, and `intersect()` methods.
+ */
+class CSG {
+    constructor() {
+        this.polygons = [];
+    }
+    static fromPolygons(polygons) {
+        const csg = new CSG();
+        csg.polygons = polygons;
+        return csg;
+    }
+    static fromGeometry(geom, objectIndex) {
+        let polys = [];
+        const posattr = geom.attributes.position;
+        const normalattr = geom.attributes.normal;
+        const uvattr = geom.attributes.uv;
+        const colorattr = geom.attributes.color;
+        const grps = geom.groups;
+        let index;
+        if (geom.index) {
+            index = geom.index.array;
+        }
+        else {
+            index = new Uint16Array((posattr.array.length / posattr.itemSize) | 0);
+            for (let i = 0; i < index.length; i++)
+                index[i] = i;
+        }
+        const triCount = (index.length / 3) | 0;
+        polys = new Array(triCount);
+        for (let i = 0, pli = 0, l = index.length; i < l; i += 3, pli++) {
+            const vertices = new Array(3);
+            for (let j = 0; j < 3; j++) {
+                const vi = index[i + j];
+                const vp = vi * 3;
+                const vt = vi * 2;
+                const x = posattr.array[vp];
+                const y = posattr.array[vp + 1];
+                const z = posattr.array[vp + 2];
+                const nx = normalattr.array[vp];
+                const ny = normalattr.array[vp + 1];
+                const nz = normalattr.array[vp + 2];
+                const u = uvattr === null || uvattr === void 0 ? void 0 : uvattr.array[vt];
+                const v = uvattr === null || uvattr === void 0 ? void 0 : uvattr.array[vt + 1];
+                vertices[j] = new Vertex_1.Vertex(new Vector_1.Vector(x, y, z), new Vector_1.Vector(nx, ny, nz), new Vector_1.Vector(u, v, 0), colorattr &&
+                    new Vector_1.Vector(colorattr.array[vp], colorattr.array[vp + 1], colorattr.array[vp + 2]));
+            }
+            if (objectIndex === undefined && grps && grps.length > 0) {
+                for (const grp of grps) {
+                    if (i >= grp.start && i < grp.start + grp.count) {
+                        polys[pli] = new Polygon_1.Polygon(vertices, grp.materialIndex);
+                    }
+                }
+            }
+            else {
+                polys[pli] = new Polygon_1.Polygon(vertices, objectIndex);
+            }
+        }
+        return CSG.fromPolygons(polys.filter((p) => !Number.isNaN(p.plane.normal.x)));
+    }
+    static toGeometry(csg, toMatrix) {
+        let triCount = 0;
+        const ps = csg.polygons;
+        for (const p of ps) {
+            triCount += p.vertices.length - 2;
+        }
+        const geom = new three_1.BufferGeometry();
+        const vertices = new NBuf_1.NBuf3(triCount * 3 * 3);
+        const normals = new NBuf_1.NBuf3(triCount * 3 * 3);
+        const uvs = new NBuf_1.NBuf2(triCount * 2 * 3);
+        let colors;
+        const grps = [];
+        const dgrp = [];
+        for (const p of ps) {
+            const pvs = p.vertices;
+            const pvlen = pvs.length;
+            if (p.shared !== undefined) {
+                if (!grps[p.shared])
+                    grps[p.shared] = [];
+            }
+            if (pvlen && pvs[0].color !== undefined) {
+                if (!colors)
+                    colors = new NBuf_1.NBuf3(triCount * 3 * 3);
+            }
+            for (let j = 3; j <= pvlen; j++) {
+                const grp = p.shared === undefined ? dgrp : grps[p.shared];
+                grp.push(vertices.top / 3, vertices.top / 3 + 1, vertices.top / 3 + 2);
+                vertices.write(pvs[0].pos);
+                vertices.write(pvs[j - 2].pos);
+                vertices.write(pvs[j - 1].pos);
+                normals.write(pvs[0].normal);
+                normals.write(pvs[j - 2].normal);
+                normals.write(pvs[j - 1].normal);
+                if (uvs) {
+                    uvs.write(pvs[0].uv);
+                    uvs.write(pvs[j - 2].uv);
+                    uvs.write(pvs[j - 1].uv);
+                }
+                if (colors) {
+                    colors.write(pvs[0].color);
+                    colors.write(pvs[j - 2].color);
+                    colors.write(pvs[j - 1].color);
+                }
+            }
+        }
+        geom.setAttribute('position', new three_1.BufferAttribute(vertices.array, 3));
+        geom.setAttribute('normal', new three_1.BufferAttribute(normals.array, 3));
+        uvs && geom.setAttribute('uv', new three_1.BufferAttribute(uvs.array, 2));
+        colors && geom.setAttribute('color', new three_1.BufferAttribute(colors.array, 3));
+        for (let gi = 0; gi < grps.length; gi++) {
+            if (grps[gi] === undefined) {
+                grps[gi] = [];
+            }
+        }
+        if (grps.length) {
+            let index = [];
+            let gbase = 0;
+            for (let gi = 0; gi < grps.length; gi++) {
+                geom.addGroup(gbase, grps[gi].length, gi);
+                gbase += grps[gi].length;
+                index = index.concat(grps[gi]);
+            }
+            geom.addGroup(gbase, dgrp.length, grps.length);
+            index = index.concat(dgrp);
+            geom.setIndex(index);
+        }
+        const inv = new three_1.Matrix4().copy(toMatrix).invert();
+        geom.applyMatrix4(inv);
+        geom.computeBoundingSphere();
+        geom.computeBoundingBox();
+        return geom;
+    }
+    static fromMesh(mesh, objectIndex) {
+        const csg = CSG.fromGeometry(mesh.geometry, objectIndex);
+        const ttvv0 = new three_1.Vector3();
+        const tmpm3 = new three_1.Matrix3();
+        tmpm3.getNormalMatrix(mesh.matrix);
+        for (let i = 0; i < csg.polygons.length; i++) {
+            const p = csg.polygons[i];
+            for (let j = 0; j < p.vertices.length; j++) {
+                const v = p.vertices[j];
+                v.pos.copy(ttvv0.copy(v.pos.toVector3()).applyMatrix4(mesh.matrix));
+                v.normal.copy(ttvv0.copy(v.normal.toVector3()).applyMatrix3(tmpm3));
+            }
+        }
+        return csg;
+    }
+    static toMesh(csg, toMatrix, toMaterial) {
+        const geom = CSG.toGeometry(csg, toMatrix);
+        const m = new three_1.Mesh(geom, toMaterial);
+        m.matrix.copy(toMatrix);
+        m.matrix.decompose(m.position, m.quaternion, m.scale);
+        m.rotation.setFromQuaternion(m.quaternion);
+        m.updateMatrixWorld();
+        m.castShadow = m.receiveShadow = true;
+        return m;
+    }
+    static union(meshA, meshB) {
+        const csgA = CSG.fromMesh(meshA);
+        const csgB = CSG.fromMesh(meshB);
+        return CSG.toMesh(csgA.union(csgB), meshA.matrix, meshA.material);
+    }
+    static subtract(meshA, meshB) {
+        const csgA = CSG.fromMesh(meshA);
+        const csgB = CSG.fromMesh(meshB);
+        return CSG.toMesh(csgA.subtract(csgB), meshA.matrix, meshA.material);
+    }
+    static intersect(meshA, meshB) {
+        const csgA = CSG.fromMesh(meshA);
+        const csgB = CSG.fromMesh(meshB);
+        return CSG.toMesh(csgA.intersect(csgB), meshA.matrix, meshA.material);
+    }
+    clone() {
+        const csg = new CSG();
+        csg.polygons = this.polygons
+            .map((p) => p.clone())
+            .filter((p) => Number.isFinite(p.plane.w));
+        return csg;
+    }
+    toPolygons() {
+        return this.polygons;
+    }
+    union(csg) {
+        const a = new Node_1.Node(this.clone().polygons);
+        const b = new Node_1.Node(csg.clone().polygons);
+        a.clipTo(b);
+        b.clipTo(a);
+        b.invert();
+        b.clipTo(a);
+        b.invert();
+        a.build(b.allPolygons());
+        return CSG.fromPolygons(a.allPolygons());
+    }
+    subtract(csg) {
+        const a = new Node_1.Node(this.clone().polygons);
+        const b = new Node_1.Node(csg.clone().polygons);
+        a.invert();
+        a.clipTo(b);
+        b.clipTo(a);
+        b.invert();
+        b.clipTo(a);
+        b.invert();
+        a.build(b.allPolygons());
+        a.invert();
+        return CSG.fromPolygons(a.allPolygons());
+    }
+    intersect(csg) {
+        const a = new Node_1.Node(this.clone().polygons);
+        const b = new Node_1.Node(csg.clone().polygons);
+        a.invert();
+        b.clipTo(a);
+        b.invert();
+        a.clipTo(b);
+        b.clipTo(a);
+        a.build(b.allPolygons());
+        a.invert();
+        return CSG.fromPolygons(a.allPolygons());
+    }
+    // Return a new CSG solid with solid and empty space switched. This solid is
+    // not modified.
+    inverse() {
+        const csg = this.clone();
+        for (const p of csg.polygons) {
+            p.flip();
+        }
+        return csg;
+    }
+    toMesh(toMatrix, toMaterial) {
+        return CSG.toMesh(this, toMatrix, toMaterial);
+    }
+    toGeometry(toMatrix) {
+        return CSG.toGeometry(this, toMatrix);
+    }
+}
+exports.CSG = CSG;
+
+},
+  };
+  var cache = {};
+  function req(name) {
+    if (name === "three") return global.THREE;
+    if (cache[name]) return cache[name].exports;
+    var m = cache[name] = { exports: {} };
+    modules[name](m, m.exports, req);
+    return m.exports;
+  }
+  global.CSG = req("./CSG").CSG;
+})(typeof window !== "undefined" ? window : this);
+
+</script>
 <script>
 window.addEventListener("load", function () {
   "use strict";
-  if (typeof THREE === "undefined" || !THREE.OrbitControls) {
+  if (typeof THREE === "undefined" || !THREE.OrbitControls || typeof CSG === "undefined") {
     document.getElementById("loading").textContent =
       "3Dエンジンの初期化に失敗しました。ページを再読み込みしてください。";
     return;
@@ -1228,7 +1874,9 @@ window.addEventListener("load", function () {
   const AXIS_COLOR = { x: 0xff4d4d, y: 0x51e07a, z: 0x4aa3ff };
   const SNAP = 5;
   const EPS = 1e-6;
+  const PLANE_TOL = 0.05;     // 面の上に線が乗っているとみなす距離
   const DEG = Math.PI / 180;
+  const YAXIS = new THREE.Vector3(0, 1, 0);
 
   // ===== シーン =====
   const canvas = document.getElementById("view");
@@ -1259,28 +1907,54 @@ window.addEventListener("load", function () {
   const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   const tmpPlane = new THREE.Plane();
 
-  // 面ハイライト
+  // 面ハイライト（面全体）
   const hoverMesh = new THREE.Mesh(
     new THREE.PlaneGeometry(1, 1),
     new THREE.MeshBasicMaterial({ color: 0x4aa3ff, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthTest: false }));
   hoverMesh.visible = false; hoverMesh.renderOrder = 999;
   scene.add(hoverMesh);
 
+  // 領域ハイライト（線で囲まれた部分）
+  let regionMesh = null;
+  const regionMat = new THREE.MeshBasicMaterial({ color: 0xffcc44, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthTest: false });
+  function showRegion(poly2, basis) {
+    clearRegion();
+    const geo = prismGeometry(poly2, basis, 0.02, 0.001);
+    regionMesh = new THREE.Mesh(geo, regionMat);
+    regionMesh.renderOrder = 998;
+    scene.add(regionMesh);
+  }
+  function clearRegion() {
+    if (regionMesh) { scene.remove(regionMesh); regionMesh.geometry.dispose(); regionMesh = null; }
+  }
+
+  // 押し出しプレビュー
+  let ghostMesh = null;
+  const ghostMat = new THREE.MeshBasicMaterial({ color: 0x8fd0ff, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthTest: false });
+  function showGhost(geo) {
+    clearGhost();
+    ghostMesh = new THREE.Mesh(geo, ghostMat);
+    ghostMesh.renderOrder = 997;
+    scene.add(ghostMesh);
+  }
+  function clearGhost() {
+    if (ghostMesh) { scene.remove(ghostMesh); ghostMesh.geometry.dispose(); ghostMesh = null; }
+  }
+
   // 長方形プレビュー
   const previewGeo = new THREE.BufferGeometry();
   previewGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(4 * 3), 3));
-  const previewLine = new THREE.LineLoop(previewGeo, new THREE.LineBasicMaterial({ color: 0x8fd0ff }));
-  previewLine.visible = false;
+  const previewLine = new THREE.LineLoop(previewGeo, new THREE.LineBasicMaterial({ color: 0x8fd0ff, depthTest: false }));
+  previewLine.visible = false; previewLine.renderOrder = 996;
   scene.add(previewLine);
 
   // 線プレビュー
   const lineGeo = new THREE.BufferGeometry();
   lineGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(2 * 3), 3));
-  const linePreview = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0xffffff }));
-  linePreview.visible = false;
+  const linePreview = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false }));
+  linePreview.visible = false; linePreview.renderOrder = 996;
   scene.add(linePreview);
 
-  // 始点マーカー
   const startDot = new THREE.Mesh(
     new THREE.SphereGeometry(1, 12, 12),
     new THREE.MeshBasicMaterial({ color: 0xffcc44, depthTest: false }));
@@ -1289,7 +1963,9 @@ window.addEventListener("load", function () {
 
   // ===== 状態 =====
   const state = { tool: "rect", snap: true, activeColor: 0 };
-  let entities = [];   // box: {id,kind:"box",color,c:{x,y,z},s:{x,y,z},rot}  line: {id,kind:"line",color,a,b}
+  // box:  { id, kind:"box", color, c, s, rot, ops:[{type:"add"|"cut", poly:[{x,y,z}...local], dir:{x,y,z}local, h}] }
+  // line: { id, kind:"line", color, a, b }
+  let entities = [];
   let selected = null;
   let nextId = 1;
   const undoStack = [], redoStack = [];
@@ -1298,9 +1974,12 @@ window.addEventListener("load", function () {
   const ndc = new THREE.Vector2();
   let W = 1, H = 1;
 
-  // ===== ユーティリティ =====
+  // ===== 基本ユーティリティ =====
   function snapVal(v) { return state.snap ? Math.round(v / SNAP) * SNAP : Math.round(v * 100) / 100; }
   const round2 = v => Math.round(v * 100) / 100;
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const objV = v => ({ x: v.x, y: v.y, z: v.z });
+
   function evtNDC(e) {
     const r = canvas.getBoundingClientRect();
     ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1;
@@ -1330,17 +2009,125 @@ window.addEventListener("load", function () {
     const p = v3.clone().project(camera);
     return { x: (p.x * 0.5 + 0.5) * W, y: (-p.y * 0.5 + 0.5) * H };
   }
-  // ローカル軸の世界方向（回転はY軸まわりのみ）
+  function isSolid(e) {
+    return e.kind === "box" && Math.abs(e.s.x) > EPS && Math.abs(e.s.y) > EPS && Math.abs(e.s.z) > EPS;
+  }
+  // 箱のローカル⇔ワールド（回転はY軸まわりのみ）
+  function toLocal(e, w) { return V(w.x - e.c.x, w.y - e.c.y, w.z - e.c.z).applyAxisAngle(YAXIS, -(e.rot || 0) * DEG); }
+  function toWorld(e, l) { return V(l.x, l.y, l.z).applyAxisAngle(YAXIS, (e.rot || 0) * DEG).add(V(e.c.x, e.c.y, e.c.z)); }
   function axisDir(e, axis) {
     const r = (e.rot || 0) * DEG;
-    if (axis === "x") return new THREE.Vector3(Math.cos(r), 0, -Math.sin(r));
-    if (axis === "y") return new THREE.Vector3(0, 1, 0);
-    return new THREE.Vector3(Math.sin(r), 0, Math.cos(r));
+    if (axis === "x") return V(Math.cos(r), 0, -Math.sin(r));
+    if (axis === "y") return V(0, 1, 0);
+    return V(Math.sin(r), 0, Math.cos(r));
   }
-  function boxQuat(e, flat) {
-    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, (e.rot || 0) * DEG, 0));
-    if (flat) q.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)));
-    return q;
+
+  // ===== 面の座標系 =====
+  // 面上の点を (u,v) の2次元で扱えるようにする。u×v = n（右手系）
+  function faceBasis(e, axis, sign) {
+    const n = axisDir(e, axis).multiplyScalar(sign);
+    // u は面内の適当な軸、v = n × u で右手系にする
+    const u = axisDir(e, axis === "x" ? "y" : "x");
+    const v = new THREE.Vector3().crossVectors(n, u).normalize();
+    const origin = V(e.c.x, e.c.y, e.c.z).add(n.clone().multiplyScalar(e.s[axis] / 2));
+    return { e, axis, sign, n, u, v, origin };
+  }
+  function to2D(basis, p) {
+    const d = V(p.x, p.y, p.z).sub(basis.origin);
+    return { a: d.dot(basis.u), b: d.dot(basis.v), w: d.dot(basis.n) };
+  }
+  function to3D(basis, a, b, w) {
+    return basis.origin.clone()
+      .add(basis.u.clone().multiplyScalar(a))
+      .add(basis.v.clone().multiplyScalar(b))
+      .add(basis.n.clone().multiplyScalar(w || 0));
+  }
+
+  // ===== 多角形 =====
+  function polyArea2(poly) {
+    let s = 0;
+    for (let i = 0; i < poly.length; i++) {
+      const p = poly[i], q = poly[(i + 1) % poly.length];
+      s += p.a * q.b - q.a * p.b;
+    }
+    return s / 2;
+  }
+  function pointInPoly(poly, pt) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const yi = poly[i].b, yj = poly[j].b, xi = poly[i].a, xj = poly[j].a;
+      if ((yi > pt.b) !== (yj > pt.b) &&
+          pt.a < ((xj - xi) * (pt.b - yi)) / ((yj - yi) || EPS) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  // 多角形を面の法線方向に押し出したジオメトリ（ワールド座標）
+  function prismGeometry(poly2, basis, offset, height) {
+    let poly = poly2;
+    if (polyArea2(poly) < 0) poly = poly.slice().reverse();   // 反時計回りに揃える
+    const shape = new THREE.Shape(poly.map(p => new THREE.Vector2(p.a, p.b)));
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: Math.max(height, 1e-4), bevelEnabled: false });
+    const m = new THREE.Matrix4().makeBasis(basis.u, basis.v, basis.n);
+    m.setPosition(basis.origin.clone().add(basis.n.clone().multiplyScalar(offset)));
+    geo.applyMatrix4(m);
+    return geo;
+  }
+
+  // ===== 線で囲まれた領域の検出 =====
+  function linesOnFace(basis) {
+    const segs = [];
+    for (const e of entities) {
+      if (e.kind !== "line") continue;
+      const A = to2D(basis, e.a), B = to2D(basis, e.b);
+      if (Math.abs(A.w) > PLANE_TOL || Math.abs(B.w) > PLANE_TOL) continue;
+      segs.push([{ a: A.a, b: A.b }, { a: B.a, b: B.b }]);
+    }
+    return segs;
+  }
+  function findRegion(basis, pt) {
+    const segs = linesOnFace(basis);
+    if (segs.length < 3 || segs.length > 60) return null;
+    // 端点をまとめてグラフ化
+    const key = p => Math.round(p.a * 1000) + "," + Math.round(p.b * 1000);
+    const nodes = [], index = new Map(), adj = [];
+    function nodeOf(p) {
+      const k = key(p);
+      if (!index.has(k)) { index.set(k, nodes.length); nodes.push(p); adj.push([]); }
+      return index.get(k);
+    }
+    for (const [A, B] of segs) {
+      const i = nodeOf(A), j = nodeOf(B);
+      if (i === j) continue;
+      if (!adj[i].includes(j)) adj[i].push(j);
+      if (!adj[j].includes(i)) adj[j].push(i);
+    }
+    // 最小ノード番号を起点にした単純閉路を列挙
+    const cycles = [];
+    const seen = new Set();
+    for (let s = 0; s < nodes.length && cycles.length < 200; s++) {
+      const path = [s];
+      (function dfs(v) {
+        if (path.length > 12 || cycles.length >= 200) return;
+        for (const w of adj[v]) {
+          if (w === s && path.length >= 3) {
+            const sig = path.slice().sort((x, y) => x - y).join(",");
+            if (!seen.has(sig)) { seen.add(sig); cycles.push(path.slice()); }
+          } else if (w > s && path.indexOf(w) < 0) {
+            path.push(w); dfs(w); path.pop();
+          }
+        }
+      })(s);
+    }
+    // 点を含む最小面積の閉路
+    let best = null, bestArea = Infinity;
+    for (const cyc of cycles) {
+      const poly = cyc.map(i => nodes[i]);
+      const area = Math.abs(polyArea2(poly));
+      if (area < 1e-4) continue;
+      if (!pointInPoly(poly, pt)) continue;
+      if (area < bestArea) { bestArea = area; best = poly; }
+    }
+    return best;
   }
 
   // ===== メッシュ生成 =====
@@ -1349,35 +2136,98 @@ window.addEventListener("load", function () {
       if (e[key]) { world.remove(e[key]); e[key].geometry.dispose(); e[key].material.dispose(); e[key] = null; }
     }
   }
+  // ローカル座標で保持した ops から、ワールドの押し出しジオメトリを作る
+  function opGeometry(e, op) {
+    // op.poly / op.dir はローカル座標。現在の姿勢でワールドへ戻す
+    const world3 = op.poly.map(p => toWorld(e, p));
+    const n = V(op.dir.x, op.dir.y, op.dir.z).applyAxisAngle(YAXIS, (e.rot || 0) * DEG).normalize();
+    const origin = world3[0].clone();
+    const u = new THREE.Vector3().subVectors(world3[1], world3[0]);
+    u.addScaledVector(n, -u.dot(n)).normalize();
+    const v = new THREE.Vector3().crossVectors(n, u).normalize();
+    const poly2 = world3.map(p => {
+      const d = p.clone().sub(origin);
+      return { a: d.dot(u), b: d.dot(v) };
+    });
+    // 面と面がぴったり重なるとCSGが不安定になるため、少し外側から掘る
+    return prismGeometry(poly2, { u, v, n, origin }, -0.02, op.h + 0.04);
+  }
+  // CSG の結果は頂点が重複した三角形の集まりなので、そのままでは
+  // EdgesGeometry が全三角形の辺を輪郭として拾ってしまう。頂点をまとめてから使う。
+  function weld(geo, tol) {
+    const pos = geo.attributes.position;
+    const q = v => Math.round(v / (tol || 1e-4));
+    const map = new Map(), verts = [], index = [];
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      const k = q(x) + "," + q(y) + "," + q(z);
+      let id = map.get(k);
+      if (id === undefined) { id = verts.length / 3; map.set(k, id); verts.push(x, y, z); }
+      index.push(id);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
+    g.setIndex(index);
+    return g;
+  }
+  function buildBoxGeometry(e) {
+    const flat = Math.abs(e.s.y) < EPS;
+    if (flat) return new THREE.PlaneGeometry(Math.abs(e.s.x), Math.abs(e.s.z));
+    let geo = new THREE.BoxGeometry(e.s.x, e.s.y, e.s.z);
+    const ops = e.ops || [];
+    if (!ops.length) return geo;
+    // CSG は「ワールド座標のメッシュ」を扱うので、いったん箱もワールドに置く
+    const baseMesh = new THREE.Mesh(geo);
+    baseMesh.position.set(e.c.x, e.c.y, e.c.z);
+    baseMesh.quaternion.setFromEuler(new THREE.Euler(0, (e.rot || 0) * DEG, 0));
+    baseMesh.updateMatrix();
+    let cur = baseMesh;
+    for (const op of ops) {
+      const toolMesh = new THREE.Mesh(opGeometry(e, op));
+      toolMesh.updateMatrix();
+      try {
+        cur = op.type === "cut" ? CSG.subtract(cur, toolMesh) : CSG.union(cur, toolMesh);
+        cur.updateMatrix();
+      } catch (err) { /* 失敗した操作は無視して続行 */ }
+      toolMesh.geometry.dispose();
+    }
+    // CSG の結果は baseMesh のローカル座標で返るので、そのまま使える
+    const out = cur.geometry.clone();
+    if (cur !== baseMesh) cur.geometry.dispose();
+    baseMesh.geometry.dispose();
+    return out;
+  }
   function buildEnt(e) {
     disposeEnt(e);
     const col = new THREE.Color(PALETTE[e.color ?? 0]);
     if (e.kind === "line") {
       const g = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(e.a.x, e.a.y, e.a.z), new THREE.Vector3(e.b.x, e.b.y, e.b.z)]);
-      const m = new THREE.Line(g, new THREE.LineBasicMaterial({
-        color: e === selected ? 0xffcc44 : col, linewidth: 2 }));
+        V(e.a.x, e.a.y, e.a.z), V(e.b.x, e.b.y, e.b.z)]);
+      const m = new THREE.Line(g, new THREE.LineBasicMaterial({ color: e === selected ? 0xffcc44 : col }));
       m.userData.ent = e;
       world.add(m); e.mesh = m;
       return;
     }
-    const { x: sx, y: sy, z: sz } = e.s;
-    const zeros = [sx, sy, sz].filter(v => Math.abs(v) < EPS).length;
+    const zeros = [e.s.x, e.s.y, e.s.z].filter(v => Math.abs(v) < EPS).length;
     if (zeros >= 2) return;
-    const flat = Math.abs(sy) < EPS;
-    let geo;
-    if (!flat) geo = new THREE.BoxGeometry(sx, sy, sz);
-    else geo = new THREE.PlaneGeometry(Math.abs(sx), Math.abs(sz));
+    const flat = Math.abs(e.s.y) < EPS;
+    const geo = buildBoxGeometry(e);
     const mat = new THREE.MeshStandardMaterial({
       color: col, roughness: 0.85, metalness: 0, side: flat ? THREE.DoubleSide : THREE.FrontSide });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(e.c.x, e.c.y, e.c.z);
-    mesh.quaternion.copy(boxQuat(e, flat));
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, (e.rot || 0) * DEG, 0));
+    if (flat) q.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)));
+    mesh.quaternion.copy(q);
     mesh.userData.ent = e;
     world.add(mesh); e.mesh = mesh;
 
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo),
+    const hasOps = (e.ops || []).length > 0;
+    let edgeSrc = geo, welded = null;
+    if (hasOps) { welded = weld(geo); edgeSrc = welded; }
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(edgeSrc),
       new THREE.LineBasicMaterial({ color: e === selected ? 0xffcc44 : 0x1b1b20 }));
+    if (welded) welded.dispose();
     edges.position.copy(mesh.position);
     edges.quaternion.copy(mesh.quaternion);
     world.add(edges); e.edges = edges;
@@ -1394,18 +2244,21 @@ window.addEventListener("load", function () {
   function serialize() {
     return JSON.stringify(entities.map(e => e.kind === "line"
       ? { id: e.id, kind: "line", color: e.color, a: { ...e.a }, b: { ...e.b } }
-      : { id: e.id, kind: "box", color: e.color, c: { ...e.c }, s: { ...e.s }, rot: e.rot || 0 }));
+      : { id: e.id, kind: "box", color: e.color, c: { ...e.c }, s: { ...e.s }, rot: e.rot || 0,
+          ops: (e.ops || []).map(o => ({ type: o.type, h: o.h, dir: { ...o.dir }, poly: o.poly.map(p => ({ ...p })) })) }));
   }
   function loadFrom(json) {
     for (const e of entities) disposeEnt(e);
     entities = JSON.parse(json).map(d => d.kind === "line"
       ? { id: d.id, kind: "line", color: d.color ?? 0, a: { ...d.a }, b: { ...d.b }, mesh: null, edges: null }
-      : { id: d.id, kind: "box", color: d.color ?? 0, c: { ...d.c }, s: { ...d.s }, rot: d.rot || 0, mesh: null, edges: null });
+      : { id: d.id, kind: "box", color: d.color ?? 0, c: { ...d.c }, s: { ...d.s }, rot: d.rot || 0,
+          ops: (d.ops || []).map(o => ({ type: o.type, h: o.h, dir: { ...o.dir }, poly: o.poly.map(p => ({ ...p })) })),
+          mesh: null, edges: null });
     nextId = entities.reduce((m, e) => Math.max(m, e.id), 0) + 1;
     selected = null;
     rebuildAll(); updateUI();
   }
-  function pushUndo() { undoStack.push(serialize()); if (undoStack.length > 100) undoStack.shift(); redoStack.length = 0; updateUI(); }
+  function pushUndo() { undoStack.push(serialize()); if (undoStack.length > 60) undoStack.shift(); redoStack.length = 0; updateUI(); }
   function undo() { if (!undoStack.length) return; redoStack.push(serialize()); loadFrom(undoStack.pop()); }
   function redo() { if (!redoStack.length) return; undoStack.push(serialize()); loadFrom(redoStack.pop()); }
 
@@ -1414,16 +2267,20 @@ window.addEventListener("load", function () {
     const e = hit.object.userData.ent;
     const wn = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
     if (Math.abs(e.s.y) < EPS) return { axis: "y", sign: wn.y >= 0 ? 1 : -1 };
-    // Y回転を打ち消してローカル法線へ
-    const ln = wn.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -(e.rot || 0) * DEG);
+    const ln = wn.clone().applyAxisAngle(YAXIS, -(e.rot || 0) * DEG);
     const ax = Math.abs(ln.x), ay = Math.abs(ln.y), az = Math.abs(ln.z);
-    if (ax >= ay && ax >= az) return { axis: "x", sign: Math.sign(ln.x) || 1 };
-    if (ay >= ax && ay >= az) return { axis: "y", sign: Math.sign(ln.y) || 1 };
-    return { axis: "z", sign: Math.sign(ln.z) || 1 };
+    let axis, sign;
+    if (ax >= ay && ax >= az) { axis = "x"; sign = Math.sign(ln.x) || 1; }
+    else if (ay >= ax && ay >= az) { axis = "y"; sign = Math.sign(ln.y) || 1; }
+    else { axis = "z"; sign = Math.sign(ln.z) || 1; }
+    // くぼみの内壁など、外側の面から外れた位置は対象外
+    const lp = toLocal(e, hit.point);
+    if (Math.abs(Math.abs(lp[axis]) - e.s[axis] / 2) > PLANE_TOL * 4) return null;
+    return { axis, sign };
   }
   function placeHover(e, axis, sign) {
     const dir = axisDir(e, axis).multiplyScalar(sign);
-    const center = new THREE.Vector3(e.c.x, e.c.y, e.c.z).add(dir.clone().multiplyScalar(e.s[axis] / 2));
+    const center = V(e.c.x, e.c.y, e.c.z).add(dir.clone().multiplyScalar(e.s[axis] / 2));
     const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, (e.rot || 0) * DEG, 0));
     let w, h;
     if (axis === "y") { q.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0))); w = e.s.x; h = e.s.z; }
@@ -1436,11 +2293,10 @@ window.addEventListener("load", function () {
   }
 
   // ===== ドラッグ状態 =====
-  let rectDrag = null;   // { p0, raw }
-  let pushDrag = null;   // { ent, axis, sign, startSize, startCenter, startPix, sAxis, sLen2, moved }
-  let lineDraft = null;  // { a, lock, downPix }
+  let rectDrag = null;   // 地面: {p0, raw} / 面: {basis, p0:{a,b}}
+  let pushDrag = null;
+  let lineDraft = null;
 
-  // 長方形の範囲（スナップで潰れた辺は1グリッド確保）
   function rectExtent(p) {
     const x0 = rectDrag.p0.x, z0 = rectDrag.p0.z;
     const x1 = snapVal(p.x), z1 = snapVal(p.z);
@@ -1456,31 +2312,48 @@ window.addEventListener("load", function () {
   }
 
   // ===== 線ツール =====
-  // 終点の候補。lock があればその軸に平行に拘束、無ければ自動で軸に吸着。
+  // 面の上では、面の平面内だけでスナップする（面から浮かないように）
+  function snapOnFace(basis, p) {
+    const q = to2D(basis, p);
+    return to3D(basis, snapVal(q.a), snapVal(q.b), 0);
+  }
+  function pickPoint() {
+    const hit = pickBox();
+    if (hit) {
+      const e = hit.object.userData.ent;
+      const fi = faceInfo(hit);
+      if (fi) {
+        const basis = faceBasis(e, fi.axis, fi.sign);
+        return { p: snapOnFace(basis, hit.point), basis };
+      }
+      return { p: V(snapVal(hit.point.x), snapVal(hit.point.y), snapVal(hit.point.z)), basis: null };
+    }
+    const g = groundHit();
+    if (!g) return null;
+    return { p: V(snapVal(g.x), 0, snapVal(g.z)), basis: null };
+  }
   function linePoint(a, lock) {
-    let p = null;
     if (lock === "y") {
-      // 始点を通り、カメラを向いた垂直面で拾う
-      const n = new THREE.Vector3().subVectors(camera.position, new THREE.Vector3(a.x, a.y, a.z));
+      const n = new THREE.Vector3().subVectors(camera.position, V(a.x, a.y, a.z));
       n.y = 0;
       if (n.lengthSq() < EPS) n.set(0, 0, 1);
       n.normalize();
-      tmpPlane.setFromNormalAndCoplanarPoint(n, new THREE.Vector3(a.x, a.y, a.z));
-      p = planeHit(tmpPlane);
+      tmpPlane.setFromNormalAndCoplanarPoint(n, V(a.x, a.y, a.z));
+      const p = planeHit(tmpPlane);
       if (!p) return null;
       return { x: a.x, y: snapVal(p.y), z: a.z, lock: "y" };
     }
-    const hit = pickBox();
-    if (hit) p = hit.point.clone();
+    let q = null;
+    const picked = pickPoint();
+    if (picked) q = { x: picked.p.x, y: picked.p.y, z: picked.p.z };
     else {
-      tmpPlane.set(new THREE.Vector3(0, 1, 0), -a.y); // 始点の高さの水平面
-      p = planeHit(tmpPlane);
+      tmpPlane.set(V(0, 1, 0), -a.y);
+      const p = planeHit(tmpPlane);
+      if (!p) return null;
+      q = { x: snapVal(p.x), y: snapVal(p.y), z: snapVal(p.z) };
     }
-    if (!p) return null;
-    let q = { x: snapVal(p.x), y: snapVal(p.y), z: snapVal(p.z) };
     if (lock === "x") return { x: q.x, y: a.y, z: a.z, lock: "x" };
     if (lock === "z") return { x: a.x, y: a.y, z: q.z, lock: "z" };
-    // 自動吸着: ほぼ軸方向なら平行にそろえる
     const d = { x: q.x - a.x, y: q.y - a.y, z: q.z - a.z };
     const ax = Math.abs(d.x), ay = Math.abs(d.y), az = Math.abs(d.z);
     const max = Math.max(ax, ay, az);
@@ -1501,16 +2374,21 @@ window.addEventListener("load", function () {
     lineGeo.attributes.position.needsUpdate = true;
     linePreview.material.color.set(lock ? AXIS_COLOR[lock] : 0xffffff);
     linePreview.visible = true;
-    const len = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
-    setNote("長さ " + round2(len) + (lock ? "（" + lock.toUpperCase() + "軸）" : ""));
+    setNote("長さ " + round2(Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z)) + (lock ? "（" + lock.toUpperCase() + "軸）" : ""));
     setLock(lock);
   }
-  function commitLine(a, b) {
+  function addLine(a, b) {
     if (Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) < EPS) return false;
-    pushUndo();
-    const e = { id: nextId++, kind: "line", color: state.activeColor, a: { ...a }, b: { x: b.x, y: b.y, z: b.z }, mesh: null, edges: null };
-    entities.push(e); buildEnt(e); updateUI();
+    const e = { id: nextId++, kind: "line", color: state.activeColor,
+      a: { x: a.x, y: a.y, z: a.z }, b: { x: b.x, y: b.y, z: b.z }, mesh: null, edges: null };
+    entities.push(e); buildEnt(e);
     return true;
+  }
+  function commitLine(a, b) {
+    pushUndo();
+    const ok = addLine(a, b);
+    if (!ok) undoStack.pop(); else updateUI();
+    return ok;
   }
   function endLine() {
     lineDraft = null; linePreview.visible = false; startDot.visible = false;
@@ -1524,15 +2402,16 @@ window.addEventListener("load", function () {
     controls.mouseButtons.MIDDLE = THREE.MOUSE.PAN;
     controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
     hoverMesh.visible = false; previewLine.visible = false;
-    endLine();
+    clearRegion(); clearGhost(); endLine();
+    rectDrag = null;
     if (t !== "select") { selected = null; refreshHighlight(); }
+    setTarget("—");
     updateUI();
   }
   document.getElementById("tools").addEventListener("click", ev => {
     const b = ev.target.closest("button"); if (b) setTool(b.dataset.tool);
   });
 
-  // ===== 色 =====
   document.getElementById("colors").addEventListener("click", ev => {
     const b = ev.target.closest(".swatch"); if (b) setColor(+b.dataset.color);
   });
@@ -1541,8 +2420,6 @@ window.addEventListener("load", function () {
     if (selected) { pushUndo(); selected.color = i; buildEnt(selected); refreshHighlight(); }
     updateUI();
   }
-
-  // ===== 回転 =====
   function rotateSelected(deg) {
     if (!selected || selected.kind !== "box") return;
     pushUndo();
@@ -1556,16 +2433,27 @@ window.addEventListener("load", function () {
     if (ev.button !== 0) return;
 
     if (state.tool === "rect") {
+      const hit = pickBox();
+      if (hit) {
+        // 立体の面の上 → 領域用の長方形（線4本）を描く
+        const e = hit.object.userData.ent;
+        const fi = faceInfo(hit);
+        if (fi) {
+          const basis = faceBasis(e, fi.axis, fi.sign);
+          const q = to2D(basis, hit.point);
+          rectDrag = { basis, p0: { a: snapVal(q.a), b: snapVal(q.b) }, raw: { a: q.a, b: q.b } };
+          canvas.setPointerCapture(ev.pointerId);
+          return;
+        }
+      }
       const p = groundHit(); if (!p) return;
       rectDrag = { p0: { x: snapVal(p.x), z: snapVal(p.z) }, raw: { x: p.x, z: p.z } };
       canvas.setPointerCapture(ev.pointerId);
 
     } else if (state.tool === "line") {
       if (!lineDraft) {
-        const hit = pickBox();
-        let a;
-        if (hit) a = { x: snapVal(hit.point.x), y: snapVal(hit.point.y), z: snapVal(hit.point.z) };
-        else { const p = groundHit(); if (!p) return; a = { x: snapVal(p.x), y: 0, z: snapVal(p.z) }; }
+        const picked = pickPoint(); if (!picked) return;
+        const a = objV(picked.p);
         lineDraft = { a, lock: null, downPix: pix };
         startDot.position.set(a.x, a.y, a.z);
         startDot.scale.setScalar(camera.position.distanceTo(controls.target) * 0.006);
@@ -1578,17 +2466,19 @@ window.addEventListener("load", function () {
     } else if (state.tool === "push") {
       const hit = pickBox(); if (!hit) return;
       const e = hit.object.userData.ent;
-      const fi = faceInfo(hit);
-      const dir = axisDir(e, fi.axis).multiplyScalar(fi.sign);
+      const fi = faceInfo(hit); if (!fi) return;
+      const basis = faceBasis(e, fi.axis, fi.sign);
+      const region = isSolid(e) ? findRegion(basis, to2D(basis, hit.point)) : null;
+      const dir = basis.n.clone();
       const grab = hit.point.clone();
       const a = toPix(grab), b = toPix(grab.clone().add(dir));
       const sAxis = { x: b.x - a.x, y: b.y - a.y };
-      pushUndo();
       pushDrag = {
-        ent: e, axis: fi.axis, sign: fi.sign, dir,
+        ent: e, axis: fi.axis, sign: fi.sign, dir, basis, region,
         startSize: e.s[fi.axis], startCenter: { ...e.c },
-        startPix: pix, sAxis, sLen2: sAxis.x * sAxis.x + sAxis.y * sAxis.y, moved: false,
+        startPix: pix, sAxis, sLen2: sAxis.x * sAxis.x + sAxis.y * sAxis.y, d: 0, moved: false,
       };
+      if (!region) pushUndo();
       controls.enabled = false;
       canvas.setPointerCapture(ev.pointerId);
 
@@ -1603,10 +2493,19 @@ window.addEventListener("load", function () {
     const pix = evtNDC(ev);
 
     if (rectDrag) {
-      const p = groundHit(); if (!p) return;
-      const r = rectExtent(p);
-      setPreviewRect(r.minx, r.minz, r.maxx, r.maxz);
-      setNote((r.maxx - r.minx) + " × " + (r.maxz - r.minz));
+      if (rectDrag.basis) {
+        const p = planeFromBasis(rectDrag.basis);
+        if (!p) return;
+        const q = to2D(rectDrag.basis, p);
+        const r = faceRectExtent(q);
+        setPreviewRectOnFace(rectDrag.basis, r);
+        setNote((r.maxa - r.mina) + " × " + (r.maxb - r.minb));
+      } else {
+        const p = groundHit(); if (!p) return;
+        const r = rectExtent(p);
+        setPreviewRect(r.minx, r.minz, r.maxx, r.maxz);
+        setNote((r.maxx - r.minx) + " × " + (r.maxz - r.minz));
+      }
       return;
     }
     if (pushDrag) {
@@ -1614,17 +2513,30 @@ window.addEventListener("load", function () {
       if (d.sLen2 < 1e-3) return;
       const dx = pix.px - d.startPix.px, dy = pix.py - d.startPix.py;
       const along = (dx * d.sAxis.x + dy * d.sAxis.y) / d.sLen2;
-      const e = d.ent;
-      const newSize = Math.max(0, snapVal(d.startSize + along));
-      const delta = newSize - d.startSize;
-      e.s[d.axis] = newSize;
-      e.c.x = d.startCenter.x + d.dir.x * delta / 2;
-      e.c.y = d.startCenter.y + d.dir.y * delta / 2;
-      e.c.z = d.startCenter.z + d.dir.z * delta / 2;
-      d.moved = true;
-      buildEnt(e); placeHover(e, d.axis, d.sign);
-      setNote("厚み " + round2(newSize));
-      updateUI();
+      if (d.region) {
+        d.d = snapVal(along);
+        d.moved = true;
+        clearGhost();
+        if (Math.abs(d.d) > EPS) {
+          const h = Math.abs(d.d);
+          const outward = d.d > 0;
+          const geo = prismGeometry(d.region, d.basis, outward ? 0 : -h, h);
+          showGhost(geo);
+        }
+        setNote((d.d >= 0 ? "出っ張り " : "くぼみ ") + round2(Math.abs(d.d)));
+      } else {
+        const e = d.ent;
+        const newSize = Math.max(0, snapVal(d.startSize + along));
+        const delta = newSize - d.startSize;
+        e.s[d.axis] = newSize;
+        e.c.x = d.startCenter.x + d.dir.x * delta / 2;
+        e.c.y = d.startCenter.y + d.dir.y * delta / 2;
+        e.c.z = d.startCenter.z + d.dir.z * delta / 2;
+        d.moved = true;
+        buildEnt(e); placeHover(e, d.axis, d.sign);
+        setNote("厚み " + round2(newSize));
+        updateUI();
+      }
       return;
     }
     if (lineDraft) {
@@ -1634,42 +2546,87 @@ window.addEventListener("load", function () {
     }
     if (state.tool === "push") {
       const hit = pickBox();
-      if (hit) { const fi = faceInfo(hit); placeHover(hit.object.userData.ent, fi.axis, fi.sign); }
-      else hoverMesh.visible = false;
+      clearRegion();
+      if (hit) {
+        const e = hit.object.userData.ent;
+        const fi = faceInfo(hit);
+        if (fi) {
+          const basis = faceBasis(e, fi.axis, fi.sign);
+          const region = isSolid(e) ? findRegion(basis, to2D(basis, hit.point)) : null;
+          if (region) { hoverMesh.visible = false; showRegion(region, basis); setTarget("領域"); }
+          else { placeHover(e, fi.axis, fi.sign); setTarget("面"); }
+          return;
+        }
+      }
+      hoverMesh.visible = false; setTarget("—");
     }
   });
 
   window.addEventListener("pointerup", ev => {
     if (rectDrag) {
-      const p = groundHit();
-      if (p) {
-        const { minx, minz, maxx, maxz } = rectExtent(p);
-        if (maxx - minx > EPS && maxz - minz > EPS) {
-          pushUndo();
-          const e = {
-            id: nextId++, kind: "box", color: state.activeColor,
-            c: { x: (minx + maxx) / 2, y: 0, z: (minz + maxz) / 2 },
-            s: { x: maxx - minx, y: 0, z: maxz - minz }, rot: 0, mesh: null, edges: null };
-          entities.push(e); buildEnt(e);
+      if (rectDrag.basis) {
+        const p = planeFromBasis(rectDrag.basis);
+        if (p) {
+          const r = faceRectExtent(to2D(rectDrag.basis, p));
+          if (r.maxa - r.mina > EPS && r.maxb - r.minb > EPS) {
+            const bs = rectDrag.basis;
+            const corners = [
+              to3D(bs, r.mina, r.minb, 0), to3D(bs, r.maxa, r.minb, 0),
+              to3D(bs, r.maxa, r.maxb, 0), to3D(bs, r.mina, r.maxb, 0)];
+            pushUndo();
+            for (let i = 0; i < 4; i++) addLine(objV(corners[i]), objV(corners[(i + 1) % 4]));
+            updateUI();
+          }
+        }
+      } else {
+        const p = groundHit();
+        if (p) {
+          const { minx, minz, maxx, maxz } = rectExtent(p);
+          if (maxx - minx > EPS && maxz - minz > EPS) {
+            pushUndo();
+            const e = {
+              id: nextId++, kind: "box", color: state.activeColor,
+              c: { x: (minx + maxx) / 2, y: 0, z: (minz + maxz) / 2 },
+              s: { x: maxx - minx, y: 0, z: maxz - minz }, rot: 0, ops: [], mesh: null, edges: null };
+            entities.push(e); buildEnt(e);
+          }
         }
       }
       rectDrag = null; previewLine.visible = false; setNote(""); updateUI();
     }
+
     if (pushDrag) {
-      const e = pushDrag.ent;
-      const flatX = Math.abs(e.s.x) < EPS, flatY = Math.abs(e.s.y) < EPS, flatZ = Math.abs(e.s.z) < EPS;
-      // 貫通して厚みが無くなったら削除（高さ0は「地面の長方形に戻った」ので残す）
-      if (flatX || flatZ || (flatY && (flatX || flatZ))) {
-        disposeEnt(e); entities = entities.filter(x => x !== e);
-        if (selected === e) selected = null;
+      const d = pushDrag;
+      if (d.region) {
+        clearGhost();
+        if (Math.abs(d.d) > EPS) {
+          const e = d.ent;
+          pushUndo();
+          const outward = d.d > 0;
+          const h = Math.abs(d.d);
+          // 面上の多角形をローカル座標で保存する（回転・移動に追従させるため）
+          const poly = d.region.map(q => objV(toLocal(e, to3D(d.basis, q.a, q.b, 0))));
+          const dirLocal = objV(d.dir.clone().applyAxisAngle(YAXIS, -(e.rot || 0) * DEG));
+          if (!e.ops) e.ops = [];
+          if (outward) e.ops.push({ type: "add", poly, dir: dirLocal, h });
+          else e.ops.push({ type: "cut", poly, dir: { x: -dirLocal.x, y: -dirLocal.y, z: -dirLocal.z }, h });
+          buildEnt(e); refreshHighlight();
+        }
+      } else {
+        const e = d.ent;
+        const flatX = Math.abs(e.s.x) < EPS, flatY = Math.abs(e.s.y) < EPS, flatZ = Math.abs(e.s.z) < EPS;
+        if (flatX || flatZ || (flatY && (flatX || flatZ))) {
+          disposeEnt(e); entities = entities.filter(x => x !== e);
+          if (selected === e) selected = null;
+        }
+        if (!d.moved) undoStack.pop();
       }
-      if (!pushDrag.moved) undoStack.pop();
       pushDrag = null; controls.enabled = true; setNote(""); updateUI();
     }
-    // 線: ドラッグで引いた場合はここで確定
+
     if (lineDraft && ev.button === 0) {
-      const moved = Math.hypot(ev.clientX - (canvas.getBoundingClientRect().left + lineDraft.downPix.px),
-                               ev.clientY - (canvas.getBoundingClientRect().top + lineDraft.downPix.py));
+      const r = canvas.getBoundingClientRect();
+      const moved = Math.hypot(ev.clientX - (r.left + lineDraft.downPix.px), ev.clientY - (r.top + lineDraft.downPix.py));
       if (moved > 6) {
         const b = linePoint(lineDraft.a, lineDraft.lock);
         if (b && commitLine(lineDraft.a, b)) endLine();
@@ -1679,6 +2636,33 @@ window.addEventListener("load", function () {
 
   canvas.addEventListener("contextmenu", ev => ev.preventDefault());
 
+  // 面上の長方形
+  function planeFromBasis(basis) {
+    tmpPlane.setFromNormalAndCoplanarPoint(basis.n, basis.origin);
+    return planeHit(tmpPlane);
+  }
+  function faceRectExtent(q) {
+    const a0 = rectDrag.p0.a, b0 = rectDrag.p0.b;
+    const a1 = snapVal(q.a), b1 = snapVal(q.b);
+    let mina = Math.min(a0, a1), maxa = Math.max(a0, a1);
+    let minb = Math.min(b0, b1), maxb = Math.max(b0, b1);
+    const step = state.snap ? SNAP : 1;
+    const dragged = Math.abs(q.a - rectDrag.raw.a) > 0.5 || Math.abs(q.b - rectDrag.raw.b) > 0.5;
+    if (dragged) {
+      if (maxa - mina < EPS) maxa = mina + step;
+      if (maxb - minb < EPS) maxb = minb + step;
+    }
+    return { mina, minb, maxa, maxb };
+  }
+  function setPreviewRectOnFace(basis, r) {
+    const pts = [
+      to3D(basis, r.mina, r.minb, 0.05), to3D(basis, r.maxa, r.minb, 0.05),
+      to3D(basis, r.maxa, r.maxb, 0.05), to3D(basis, r.mina, r.maxb, 0.05)];
+    const arr = previewGeo.attributes.position.array;
+    for (let i = 0; i < 4; i++) { arr[i * 3] = pts[i].x; arr[i * 3 + 1] = pts[i].y; arr[i * 3 + 2] = pts[i].z; }
+    previewGeo.attributes.position.needsUpdate = true;
+    previewLine.visible = true;
+  }
   function setPreviewRect(minx, minz, maxx, maxz) {
     const y = 0.05;
     const arr = previewGeo.attributes.position.array;
@@ -1688,7 +2672,6 @@ window.addEventListener("load", function () {
     previewLine.visible = true;
   }
 
-  // ===== 削除 =====
   function deleteSelected() {
     if (!selected) return;
     pushUndo();
@@ -1701,6 +2684,7 @@ window.addEventListener("load", function () {
   const toolNames = { orbit: "回転", rect: "長方形", line: "線", push: "プッシュ/プル", select: "選択" };
   function setNote(t) { document.getElementById("f-note").textContent = t; }
   function setLock(l) { document.getElementById("f-lock").textContent = l ? l.toUpperCase() + "軸" : "なし"; }
+  function setTarget(t) { document.getElementById("f-target").textContent = t; }
 
   function updateUI() {
     document.getElementById("f-tool").textContent = toolNames[state.tool];
@@ -1722,10 +2706,10 @@ window.addEventListener("load", function () {
   }
 
   function updateInspector() {
-    const box = document.getElementById("inspect");
+    const panel = document.getElementById("inspect");
     const boxRows = document.getElementById("in-box"), lineRows = document.getElementById("in-line");
-    if (!selected) { box.classList.remove("show"); return; }
-    box.classList.add("show");
+    if (!selected) { panel.classList.remove("show"); return; }
+    panel.classList.add("show");
     if (selected.kind === "box") {
       boxRows.style.display = ""; lineRows.style.display = "none";
       document.getElementById("in-title").textContent = "直方体の寸法";
@@ -1744,7 +2728,6 @@ window.addEventListener("load", function () {
   function applyInspector() {
     if (!selected) return;
     const num = id => parseFloat(document.getElementById(id).value);
-    // 入力値は pushUndo より先に読む（pushUndo→updateInspector が入力欄を書き戻すため）
     if (selected.kind === "box") {
       const nx = Math.max(0, num("in-sx") || 0);
       const nz = Math.max(0, num("in-sz") || 0);
@@ -1752,13 +2735,13 @@ window.addEventListener("load", function () {
       const rot = num("in-rot") || 0;
       if (nx === selected.s.x && nz === selected.s.z && ny === selected.s.y && rot === (selected.rot || 0)) return;
       pushUndo();
-      const bottom = selected.c.y - selected.s.y / 2;   // 底面を保って高さを変える
+      const bottom = selected.c.y - selected.s.y / 2;
       selected.s = { x: nx, y: ny, z: nz };
       selected.c.y = bottom + ny / 2;
       selected.rot = rot;
     } else {
       const len = Math.max(0, num("in-len") || 0);
-      const d = new THREE.Vector3(selected.b.x - selected.a.x, selected.b.y - selected.a.y, selected.b.z - selected.a.z);
+      const d = V(selected.b.x - selected.a.x, selected.b.y - selected.a.y, selected.b.z - selected.a.z);
       if (d.lengthSq() < EPS || Math.abs(d.length() - len) < EPS) return;
       pushUndo();
       d.normalize().multiplyScalar(len);
@@ -1793,9 +2776,8 @@ window.addEventListener("load", function () {
     a.href = URL.createObjectURL(blob); a.download = name; a.click();
     URL.revokeObjectURL(a.href);
   }
-
   document.getElementById("save").onclick = () => {
-    const data = { format: "mini-modeler", version: 2, entities: JSON.parse(serialize()) };
+    const data = { format: "mini-modeler", version: 3, entities: JSON.parse(serialize()) };
     download(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }), "model.json");
   };
   document.getElementById("load").onchange = ev => {
@@ -1807,12 +2789,11 @@ window.addEventListener("load", function () {
         const list = data.entities || data.objects;
         if (!Array.isArray(list)) throw new Error("データがありません");
         pushUndo();
-        // v1（min/max形式）も読み込めるように変換
         const conv = list.map(d => {
           if (d.kind) return d;
           return { id: d.id, kind: "box", color: d.color ?? 0,
             c: { x: (d.min.x + d.max.x) / 2, y: (d.min.y + d.max.y) / 2, z: (d.min.z + d.max.z) / 2 },
-            s: { x: d.max.x - d.min.x, y: d.max.y - d.min.y, z: d.max.z - d.min.z }, rot: 0 };
+            s: { x: d.max.x - d.min.x, y: d.max.y - d.min.y, z: d.max.z - d.min.z }, rot: 0, ops: [] };
         });
         loadFrom(JSON.stringify(conv));
       } catch (err) { alert("読込に失敗しました: " + err.message); }
@@ -1820,52 +2801,35 @@ window.addEventListener("load", function () {
     reader.readAsText(file); ev.target.value = "";
   };
 
-  // ===== STL 書き出し =====
-  function boxCorners(e) {
-    const r = (e.rot || 0) * DEG, cos = Math.cos(r), sin = Math.sin(r);
-    const hx = e.s.x / 2, hy = e.s.y / 2, hz = e.s.z / 2;
-    const out = {};
-    for (const i of [0, 1]) for (const j of [0, 1]) for (const k of [0, 1]) {
-      const lx = i ? hx : -hx, ly = j ? hy : -hy, lz = k ? hz : -hz;
-      out[`${i}${j}${k}`] = {
-        x: e.c.x + lx * cos + lz * sin,
-        y: e.c.y + ly,
-        z: e.c.z - lx * sin + lz * cos,
-      };
-    }
-    return out;
-  }
-  function boxTriangles(e) {
-    const c = boxCorners(e);
-    const quads = [
-      { n: axisDir(e, "x").multiplyScalar(1), v: ["100", "110", "111", "101"] },
-      { n: axisDir(e, "x").multiplyScalar(-1), v: ["000", "010", "011", "001"] },
-      { n: axisDir(e, "y").multiplyScalar(1), v: ["010", "110", "111", "011"] },
-      { n: axisDir(e, "y").multiplyScalar(-1), v: ["000", "100", "101", "001"] },
-      { n: axisDir(e, "z").multiplyScalar(1), v: ["001", "101", "111", "011"] },
-      { n: axisDir(e, "z").multiplyScalar(-1), v: ["000", "100", "110", "010"] },
-    ];
+  // ===== STL（表示中のジオメトリから直接出力するので、くぼみや出っ張りも反映される） =====
+  function meshTriangles(mesh) {
+    const geo = mesh.geometry;
+    const pos = geo.attributes.position;
+    const idx = geo.index;
+    const mat = mesh.matrixWorld;
     const tris = [];
-    for (const q of quads) {
-      const p = q.v.map(k => c[k]);
-      for (const [a, b, cc] of [[0, 1, 2], [0, 2, 3]]) {
-        let v0 = p[a], v1 = p[b], v2 = p[cc];
-        // 外向きになるよう巻き方向を合わせる
-        const ux = v1.x - v0.x, uy = v1.y - v0.y, uz = v1.z - v0.z;
-        const wx = v2.x - v0.x, wy = v2.y - v0.y, wz = v2.z - v0.z;
-        const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
-        if (nx * q.n.x + ny * q.n.y + nz * q.n.z < 0) { const t = v1; v1 = v2; v2 = t; }
-        tris.push({ n: q.n, v: [v0, v1, v2] });
+    const n = idx ? idx.count : pos.count;
+    for (let i = 0; i < n; i += 3) {
+      const vs = [];
+      for (let k = 0; k < 3; k++) {
+        const j = idx ? idx.getX(i + k) : i + k;
+        vs.push(V(pos.getX(j), pos.getY(j), pos.getZ(j)).applyMatrix4(mat));
       }
+      const u = new THREE.Vector3().subVectors(vs[1], vs[0]);
+      const w = new THREE.Vector3().subVectors(vs[2], vs[0]);
+      const nrm = new THREE.Vector3().crossVectors(u, w);
+      if (nrm.lengthSq() < 1e-12) continue;
+      nrm.normalize();
+      tris.push({ n: nrm, v: vs });
     }
     return tris;
   }
   document.getElementById("stl").onclick = () => {
-    const solids = entities.filter(e => e.kind === "box" &&
-      Math.abs(e.s.x) > EPS && Math.abs(e.s.y) > EPS && Math.abs(e.s.z) > EPS);
+    const solids = entities.filter(e => isSolid(e) && e.mesh);
     if (!solids.length) { alert("書き出せる立体がありません（高さのある立体を作ってください）"); return; }
+    world.updateMatrixWorld(true);
     const tris = [];
-    for (const e of solids) tris.push(...boxTriangles(e));
+    for (const e of solids) tris.push(...meshTriangles(e.mesh));
     const buf = new ArrayBuffer(84 + tris.length * 50);
     const dv = new DataView(buf);
     const header = "Mini Modeler STL";
@@ -1893,7 +2857,6 @@ window.addEventListener("load", function () {
     if (meta && ev.key.toLowerCase() === "y") { ev.preventDefault(); redo(); return; }
     if (ev.target.tagName === "INPUT") return;
 
-    // 線を引いている間は X/Y/Z で軸に平行固定（同じキーで解除）
     if (lineDraft) {
       const k = ev.key.toLowerCase();
       if (k === "x" || k === "y" || k === "z") {
@@ -1903,7 +2866,7 @@ window.addEventListener("load", function () {
       }
       if (ev.key === "Escape") { endLine(); return; }
     }
-    if (ev.key === "Escape") { rectDrag = null; previewLine.visible = false; endLine(); return; }
+    if (ev.key === "Escape") { rectDrag = null; previewLine.visible = false; clearGhost(); endLine(); return; }
     if (ev.key === "Delete" || ev.key === "Backspace") { deleteSelected(); return; }
     if (ev.key === "[") { rotateSelected(-15); return; }
     if (ev.key === "]") { rotateSelected(15); return; }

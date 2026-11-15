@@ -1,7 +1,7 @@
 // ===== Firebase Setup =====
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {
-  getFirestore, collection, doc, onSnapshot,
+  getFirestore, collection, doc, onSnapshot, query, where, getDocs,
   addDoc, setDoc, writeBatch, increment, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
@@ -24,6 +24,9 @@ const stateRef  = doc(db, 'meta', 'state');
 let photos        = [];
 let voters        = [];
 let votingClosed  = false;
+let currentRound  = null;   // 表示・投票中のラウンド番号
+let maxRound      = 1;      // これまでに作られた最大のラウンド番号
+let roundInfo     = {};     // { [n]: { startedAt } }
 let currentSort   = 'score';
 let currentView   = 'gallery';
 let voterName     = '';
@@ -36,6 +39,7 @@ const gallery          = document.getElementById('gallery');
 const galleryEmpty     = document.getElementById('gallery-empty');
 const galleryLoading   = document.getElementById('gallery-loading');
 const sortSelect       = document.getElementById('sort-select');
+const galleryRound     = document.getElementById('gallery-round');
 const rankingList      = document.getElementById('ranking-list');
 const rankingEmpty     = document.getElementById('ranking-empty');
 const votePanel        = document.getElementById('vote-panel');
@@ -69,24 +73,78 @@ function checkAllLoaded() {
   if (loaded.photos && loaded.voters && loaded.state) onAllLoaded();
 }
 
-onSnapshot(photosCol, snap => {
-  photos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  loaded.photos = true;
-  checkAllLoaded();
-  if (currentView === 'gallery') renderGallery();
-  if (currentView === 'ranking') renderRanking();
-});
+// 写真と投票者は「ラウンド番号」付きで保存し、削除しない。
+// 表示するのは currentRound のものだけ。過去のラウンドはいつでも呼び戻せる。
+let unsubPhotos = null;
+let unsubVoters = null;
+let subscribedRound = null;
 
-onSnapshot(votersCol, snap => {
-  voters = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  loaded.voters = true;
-  checkAllLoaded();
-  updateVoterNameStatus();
-  if (currentView === 'ranking') renderRanking();
-});
+function subscribeRound(n) {
+  if (subscribedRound === n) return;
+  subscribedRound = n;
+  unsubPhotos?.();
+  unsubVoters?.();
+  loaded.photos = false;
+  loaded.voters = false;
+
+  unsubPhotos = onSnapshot(query(photosCol, where('round', '==', n)), snap => {
+    photos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    loaded.photos = true;
+    checkAllLoaded();
+    if (currentView === 'gallery') renderGallery();
+    if (currentView === 'ranking') renderRanking();
+  });
+
+  unsubVoters = onSnapshot(query(votersCol, where('round', '==', n)), snap => {
+    voters = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    loaded.voters = true;
+    checkAllLoaded();
+    updateVoterNameStatus();
+    if (currentView === 'ranking') renderRanking();
+  });
+}
+
+// 旧バージョンのデータ（ラウンド番号なし）を第1回として登録する（初回のみ）
+let migrating = false;
+async function migrateLegacyData() {
+  if (migrating) return;
+  migrating = true;
+  const [pSnap, vSnap] = await Promise.all([getDocs(photosCol), getDocs(votersCol)]);
+  const batch = writeBatch(db);
+  pSnap.docs.forEach(d => { if (d.data().round == null) batch.update(d.ref, { round: 1 }); });
+  vSnap.docs.forEach(d => {
+    if (d.data().round == null) batch.update(d.ref, { round: 1, voterId: d.id });
+  });
+  // 第1回の日付 = 一番古い写真の投稿日（写真がなければ今日）
+  const oldest = pSnap.docs
+    .map(d => d.data().createdAt)
+    .filter(t => t?.toMillis)
+    .sort((a, b) => a.toMillis() - b.toMillis())[0];
+  batch.set(stateRef, {
+    currentRound: 1,
+    maxRound:     1,
+    roundInfo:    { 1: { startedAt: oldest || serverTimestamp() } },
+  }, { merge: true });
+  await batch.commit();
+}
 
 onSnapshot(stateRef, snap => {
-  votingClosed = snap.exists() ? (snap.data().votingClosed || false) : false;
+  // 'estimate': 新ラウンド直後（サーバー時刻の確定前）でも日付を表示できるように
+  const data = snap.exists() ? snap.data({ serverTimestamps: 'estimate' }) : {};
+  votingClosed = data.votingClosed || false;
+  if (data.currentRound == null) {
+    migrateLegacyData().catch(() => showToast('⚠️ データの準備に失敗しました。再読み込みしてください'));
+    return;
+  }
+  const prevRound = currentRound;
+  currentRound = data.currentRound;
+  maxRound     = data.maxRound || currentRound;
+  roundInfo    = data.roundInfo || {};
+  if (prevRound !== null && prevRound !== currentRound) {
+    clearLocalSession();
+    showToast(`🔄 ${roundLabel(currentRound)}を表示しています`);
+  }
+  subscribeRound(currentRound);
   loaded.state = true;
   checkAllLoaded();
   if (currentView === 'gallery') renderGallery();
@@ -113,7 +171,7 @@ sortSelect.addEventListener('change', () => {
 // ===== Voter Name =====
 function nameAlreadyVoted(name) {
   const id = normalizeVoterId(name);
-  return voters.some(v => v.id === id);
+  return voters.some(v => (v.voterId || v.id) === id);
 }
 
 function normalizeVoterId(name) {
@@ -153,6 +211,7 @@ function sortedPhotos() {
 }
 
 function renderGallery() {
+  galleryRound.textContent = currentRound == null ? '' : roundLabel(currentRound);
   closedBanner.classList.toggle('hidden', !votingClosed);
   voteInstructions.classList.toggle('hidden', votingClosed);
 
@@ -320,8 +379,11 @@ async function submitVote() {
   voteSubmitBtn.disabled = true;
   try {
     const batch = writeBatch(db);
-    batch.set(doc(db, 'voters', normalizeVoterId(voterName)), {
-      name: voterName.trim(),
+    const voterId = normalizeVoterId(voterName);
+    batch.set(doc(db, 'voters', `r${currentRound}_${voterId}`), {
+      name:    voterName.trim(),
+      voterId,
+      round:   currentRound,
       votedAt: serverTimestamp(),
     });
     entries.forEach(([id, pts]) => {
@@ -358,16 +420,24 @@ function renderRanking() {
   adminSection.className = 'admin-section';
   adminSection.innerHTML = `
     <div class="voter-list-header ${votingClosed ? 'closed-header' : ''}">
-      <span>${votingClosed ? '🔒 投票終了　' : ''}投票済み：<strong>${voters.length}人</strong></span>
+      <span><span class="round-badge">${currentRound == null ? '-' : escHtml(roundLabel(currentRound))}</span>${votingClosed ? '🔒 投票終了　' : ''}投票済み：<strong>${voters.length}人</strong></span>
       <div class="admin-btns">
         ${!votingClosed
           ? `<button id="close-voting-btn" class="btn btn-close">🔒 投票を締め切る</button>`
           : `<button id="reopen-voting-btn" class="btn btn-reopen">🔓 投票を再開する</button>`
         }
-        <button id="reset-btn" class="btn btn-reset">🗑️ 集計をリセット</button>
-        <button id="new-round-btn" class="btn btn-new-round">🔄 新ラウンド開始</button>
       </div>
     </div>
+    <details class="admin-menu" ${adminMenuOpen ? 'open' : ''}>
+      <summary>⚙️ 幹事メニュー（リセット・新ラウンド）</summary>
+      <div class="admin-menu-body">
+        <div class="admin-btns">
+          <button id="reset-btn" class="btn btn-reset">🗑️ 集計をリセット</button>
+          <button id="new-round-btn" class="btn btn-new-round">🔄 新ラウンド開始</button>
+        </div>
+        <p class="admin-note">新ラウンドを始めても、今回の写真と結果は「過去のラウンド」に保存され、いつでも戻せます。</p>
+      </div>
+    </details>
     <div class="voter-chips">${
       voters.length === 0
         ? '<span class="no-voters">まだ誰も投票していません</span>'
@@ -401,6 +471,12 @@ function renderRanking() {
     });
   }
 
+  rankingList.appendChild(buildHistorySection());
+
+  adminSection.querySelector('.admin-menu').addEventListener('toggle', e => {
+    adminMenuOpen = e.target.open;
+  });
+
   document.getElementById('close-voting-btn')?.addEventListener('click', async () => {
     if (confirm('投票を締め切りますか？')) {
       await setDoc(stateRef, { votingClosed: true }, { merge: true });
@@ -422,10 +498,133 @@ function renderRanking() {
   });
 
   document.getElementById('new-round-btn')?.addEventListener('click', async () => {
-    if (confirm('新ラウンドを開始しますか？\n\n・写真・投票記録・得点がすべて削除されます\n\nこの操作は取り消せません。')) {
+    if (confirm(`新ラウンドを開始しますか？\n\n・${roundLabel(currentRound)}の写真と結果は「過去のラウンド」に保存されます\n・ランキング下部の「過去のラウンド」からいつでも戻せます`)) {
       await startNewRound();
     }
   });
+
+  rankingList.querySelectorAll('[data-history-toggle]').forEach(btn => {
+    btn.addEventListener('click', () => toggleHistory(parseInt(btn.dataset.historyToggle, 10)));
+  });
+
+  rankingList.querySelectorAll('[data-history-restore]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const n = parseInt(btn.dataset.historyRestore, 10);
+      if (confirm(`${roundLabel(n)}に戻しますか？\n\n・ギャラリーとランキングが${roundLabel(n)}の内容に切り替わります\n・現在の${roundLabel(currentRound)}も「過去のラウンド」に保存されます`)) {
+        await switchRound(n);
+      }
+    });
+  });
+}
+
+// ===== Rounds / History =====
+let adminMenuOpen  = false;
+const expandedRounds = new Set();
+const historyCache   = new Map();   // round -> { photos, voterCount } | 'loading' | 'error'
+
+function formatDate(ts) {
+  const d = ts?.toDate?.();
+  if (!d) return '';
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// 内部の通し番号 n とは別に、表示上の回数は年ごとに1回から数え直す
+function roundYear(n) {
+  return roundInfo[n]?.startedAt?.toDate?.()?.getFullYear() ?? null;
+}
+
+function displayRoundNumber(n) {
+  const year = roundYear(n);
+  if (year == null) return n;
+  let count = 0;
+  for (let i = 1; i <= n; i++) if (roundYear(i) === year) count++;
+  return count;
+}
+
+function roundLabel(n) {
+  const date = formatDate(roundInfo[n]?.startedAt);
+  const num  = displayRoundNumber(n);
+  return date ? `第${num}回（${date}）` : `第${num}回`;
+}
+
+function buildHistorySection() {
+  const section = document.createElement('div');
+  section.className = 'history-section';
+  const past = [];
+  for (let n = maxRound; n >= 1; n--) if (n !== currentRound) past.push(n);
+
+  if (past.length === 0) {
+    section.innerHTML = `
+      <h3 class="history-title">📚 過去のラウンド</h3>
+      <p class="no-voters">まだ過去のラウンドはありません。</p>`;
+    return section;
+  }
+
+  section.innerHTML = `
+    <h3 class="history-title">📚 過去のラウンド</h3>
+    ${past.map(n => {
+      const open = expandedRounds.has(n);
+      return `
+        <div class="history-item">
+          <div class="history-head">
+            <span class="history-name">${escHtml(roundLabel(n))}</span>
+            <div class="admin-btns">
+              <button class="btn btn-reset" data-history-toggle="${n}">${open ? '▲ 閉じる' : '▼ 結果を見る'}</button>
+              <button class="btn btn-reopen" data-history-restore="${n}">↩️ このラウンドに戻す</button>
+            </div>
+          </div>
+          ${open ? `<div class="history-body">${historyBodyHtml(n)}</div>` : ''}
+        </div>`;
+    }).join('')}`;
+  return section;
+}
+
+function historyBodyHtml(n) {
+  const data = historyCache.get(n);
+  if (!data || data === 'loading') return '<p class="no-voters">読み込み中...</p>';
+  if (data === 'error') return '<p class="no-voters">読み込みに失敗しました</p>';
+  if (data.photos.length === 0) return '<p class="no-voters">写真はありません</p>';
+  return `
+    <p class="history-summary">写真 ${data.photos.length}枚・投票 ${data.voterCount}人</p>
+    ${data.photos.map((p, i) => `
+      <div class="history-row">
+        <span class="history-rank">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</span>
+        <img class="history-thumb" src="${p.dataUrl}" alt="" loading="lazy" />
+        <span class="history-photo-title">${escHtml(p.title)}<small> by ${escHtml(p.author)}</small></span>
+        <span class="history-score">${p.score || 0}点</span>
+      </div>`).join('')}`;
+}
+
+async function toggleHistory(n) {
+  if (expandedRounds.has(n)) {
+    expandedRounds.delete(n);
+    renderRanking();
+    return;
+  }
+  expandedRounds.add(n);
+  historyCache.set(n, 'loading');
+  renderRanking();
+  try {
+    const [pSnap, vSnap] = await Promise.all([
+      getDocs(query(photosCol, where('round', '==', n))),
+      getDocs(query(votersCol, where('round', '==', n))),
+    ]);
+    const list = pSnap.docs.map(d => d.data()).sort((a, b) => (b.score || 0) - (a.score || 0));
+    historyCache.set(n, { photos: list, voterCount: vSnap.size });
+  } catch {
+    historyCache.set(n, 'error');
+  }
+  if (currentView === 'ranking') renderRanking();
+}
+
+async function switchRound(n) {
+  expandedRounds.clear();
+  historyCache.clear();
+  await setDoc(stateRef, {
+    currentRound: n,
+    votingClosed: roundInfo[n]?.closed ?? false,
+    roundInfo: { [currentRound]: { closed: votingClosed } },
+  }, { merge: true });
 }
 
 async function resetVotes() {
@@ -438,14 +637,22 @@ async function resetVotes() {
   showToast('🗑️ 投票データをリセットしました');
 }
 
+// 写真は削除せず、ラウンド番号を進めるだけ（過去のラウンドとして残る）
 async function startNewRound() {
-  const batch = writeBatch(db);
-  photos.forEach(p => batch.delete(doc(db, 'photos', p.id)));
-  voters.forEach(v => batch.delete(doc(db, 'voters', v.id)));
-  batch.set(stateRef, { votingClosed: false }, { merge: true });
-  await batch.commit();
+  const next = maxRound + 1;
+  expandedRounds.clear();
+  historyCache.clear();
+  await setDoc(stateRef, {
+    currentRound: next,
+    maxRound:     next,
+    votingClosed: false,
+    roundInfo: {
+      [currentRound]: { closed: votingClosed },
+      [next]:         { startedAt: serverTimestamp() },
+    },
+  }, { merge: true });
   clearLocalSession();
-  showToast('🔄 新ラウンドを開始しました！写真を投稿してください');
+  showToast(`🔄 ${roundLabel(next)}を開始しました！写真を投稿してください`);
   navBtns.forEach(b => b.classList.toggle('active', b.dataset.view === 'upload'));
   views.forEach(v => v.classList.toggle('active', v.id === 'view-upload'));
   currentView = 'upload';
@@ -525,7 +732,7 @@ async function setPreview(file) {
 }
 
 submitBtn.addEventListener('click', async () => {
-  if (!pendingFile) return;
+  if (!pendingFile || currentRound == null) return;
   submitBtn.disabled = true;
   try {
     await addDoc(photosCol, {
@@ -534,6 +741,7 @@ submitBtn.addEventListener('click', async () => {
       dataUrl:   pendingFile,
       score:     0,
       voteCount: 0,
+      round:     currentRound,
       createdAt: serverTimestamp(),
     });
     pendingFile = null;

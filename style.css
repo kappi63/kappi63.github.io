@@ -698,6 +698,93 @@ body {
   background: rgba(245,158,11,0.22);
 }
 
+/* ===== Rounds ===== */
+.round-badge {
+  display: inline-block;
+  background: rgba(124,58,237,0.15);
+  border: 1px solid rgba(124,58,237,0.4);
+  color: #c4b5fd;
+  border-radius: 20px;
+  padding: 2px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+.round-badge:empty { display: none; }
+
+.admin-menu {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.admin-menu summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  user-select: none;
+}
+.admin-menu summary:hover { color: var(--text); }
+.admin-menu-body {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.admin-note { font-size: 0.78rem; color: var(--text-muted); line-height: 1.5; }
+
+.history-section {
+  margin-top: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.history-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
+.history-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+}
+.history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.history-name { font-weight: 600; }
+.history-body {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.history-summary { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px; }
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.88rem;
+}
+.history-rank { width: 28px; text-align: center; flex-shrink: 0; }
+.history-thumb {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  background: #111;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.history-photo-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-photo-title small { color: var(--text-muted); margin-left: 4px; }
+.history-score { font-weight: 700; color: var(--gold); flex-shrink: 0; }
+
 /* ===== Vote Panel (sticky bottom) ===== */
 .vote-panel {
   position: fixed;

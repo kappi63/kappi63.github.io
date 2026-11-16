@@ -938,6 +938,7 @@ body {
 }
 
 .btn-vote:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-vote.not-ready { opacity: 0.5; }
 
 /* ===== Toast ===== */
 .toast {

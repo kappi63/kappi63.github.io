@@ -12,9 +12,9 @@
     <div class="header-inner">
       <div class="logo">📸 フォトバトル</div>
       <nav class="nav">
-        <button class="nav-btn active" data-view="gallery">ギャラリー</button>
-        <button class="nav-btn" data-view="upload">投稿する</button>
-        <button class="nav-btn" data-view="ranking">ランキング</button>
+        <button class="nav-btn active" data-view="gallery"><span class="nav-icon">🖼️</span>ギャラリー</button>
+        <button class="nav-btn" data-view="upload"><span class="nav-icon">📤</span>投稿する</button>
+        <button class="nav-btn" data-view="ranking"><span class="nav-icon">🏆</span>ランキング</button>
       </nav>
     </div>
   </header>
@@ -49,7 +49,7 @@
         </div>
         <div class="inst-text">
           <span class="inst-icon">🗳️</span>
-          気に入った写真を <strong>最大5枚</strong> 選び、それぞれ <strong>1〜5点</strong> の得点をつけて投票してください。
+          <span>気に入った写真を <strong>最大5枚</strong> 選び、それぞれ <strong>1〜5点</strong> の得点をつけて投票してください。</span>
         </div>
       </div>
 
@@ -74,8 +74,8 @@
           <input type="text" id="uploader-name" placeholder="名前を入力" maxlength="30" />
         </div>
         <div class="form-group">
-          <label for="photo-title">写真のタイトル</label>
-          <input type="text" id="photo-title" placeholder="タイトルを入力" maxlength="50" />
+          <label for="photo-title">写真のタイトル（なくてもOK・番号は自動で付きます）</label>
+          <input type="text" id="photo-title" placeholder="例：道後温泉" maxlength="50" />
         </div>
         <div class="form-group">
           <div class="upload-label-row">

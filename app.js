@@ -277,8 +277,8 @@ function renderGalleryContent() {
     let actionHtml = '';
     if (canSelect) {
       actionHtml = isSelected
-        ? `<button class="select-btn selected-btn" data-action="deselect" data-id="${photo.id}">✓ 選択中</button>`
-        : `<button class="select-btn" data-action="select" data-id="${photo.id}" ${maxReached ? 'disabled' : ''}>＋ 選ぶ</button>`;
+        ? `<button class="select-btn selected-btn" data-action="deselect" data-id="${photo.id}">✕ 取りやめる</button>`
+        : `<button class="select-btn${maxReached ? ' max-reached' : ''}" data-action="select" data-id="${photo.id}">＋ 選ぶ</button>`;
     }
 
     const card = document.createElement('div');
@@ -321,7 +321,7 @@ function renderGalleryContent() {
 // ===== Selection =====
 function selectPhoto(id) {
   if (!voterName || votingClosed) return;
-  if (Object.keys(pendingBallot).length >= 5) { showToast('⚠️ 選べるのは5枚までです'); return; }
+  if (Object.keys(pendingBallot).length >= 5) { showToast('⚠️ 5枚選択済みです。入れ替えるときは、外したい写真の「✕ 取りやめる」を押してください'); return; }
   pendingBallot[id] = 0;
   renderGallery();
 }
@@ -864,7 +864,7 @@ function showToast(msg) {
   toastTimer = setTimeout(() => {
     toast.classList.remove('show');
     setTimeout(() => toast.classList.add('hidden'), 320);
-  }, 2800);
+  }, Math.max(2800, msg.length * 110));   // 長い案内ほど長く表示
 }
 
 // ===== Helpers =====

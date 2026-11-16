@@ -373,11 +373,20 @@ body {
   color: var(--accent-light);
 }
 
+/* 選択済みの写真：押すと選択を取りやめる */
 .select-btn.selected-btn {
-  background: rgba(124,58,237,0.15);
-  border-color: var(--accent);
-  color: var(--accent-light);
+  background: rgba(239,68,68,0.12);
+  border-color: rgba(239,68,68,0.5);
+  color: #fca5a5;
 }
+.select-btn.selected-btn:hover:not(:disabled) {
+  background: rgba(239,68,68,0.22);
+  border-color: var(--danger);
+  color: #fecaca;
+}
+
+/* 5枚選択済みのときの「選ぶ」（押すと入れ替え方を案内） */
+.select-btn.max-reached { opacity: 0.4; }
 
 .select-btn:disabled {
   opacity: 0.4;
@@ -949,15 +958,19 @@ body {
   background: var(--surface2);
   border: 1px solid var(--border);
   color: var(--text);
-  padding: 12px 24px;
-  border-radius: 50px;
+  padding: 12px 22px;
+  border-radius: 22px;
   font-size: 0.9rem;
+  line-height: 1.5;
   box-shadow: var(--shadow);
   opacity: 0;
   transition: opacity 0.3s, transform 0.3s;
   z-index: 999;
   pointer-events: none;
-  white-space: nowrap;
+  /* 長い案内は画面幅に収めて折り返す */
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  text-align: center;
 }
 
 .toast.show {

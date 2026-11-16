@@ -88,7 +88,8 @@ function subscribeRound(n) {
   loaded.voters = false;
 
   unsubPhotos = onSnapshot(query(photosCol, where('round', '==', n)), snap => {
-    photos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    photos = snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
+    assignNumbers(photos);
     loaded.photos = true;
     checkAllLoaded();
     if (currentView === 'gallery') renderGallery();
@@ -159,6 +160,7 @@ navBtns.forEach(btn => {
     views.forEach(v => v.classList.toggle('active', v.id === `view-${currentView}`));
     if (currentView === 'gallery') renderGallery();
     if (currentView === 'ranking') renderRanking();
+    window.scrollTo(0, 0);   // タブを切り替えたときだけ先頭へ
   });
 });
 
@@ -201,6 +203,21 @@ voterNameInput.addEventListener('input', () => {
   renderGallery();
 });
 
+// ===== Photo numbers =====
+// ラウンド内の投稿順に No.1, No.2 … を付ける（写真は削除されないので番号は変わらない）
+function assignNumbers(list) {
+  [...list]
+    .sort((a, b) => (a.createdAt?.toMillis?.() ?? Infinity) - (b.createdAt?.toMillis?.() ?? Infinity)
+                    || a.id.localeCompare(b.id))
+    .forEach((p, i) => { p.no = i + 1; });
+  return list;
+}
+
+function displayTitle(photo) {
+  const t = (photo.title || '').trim();
+  return t ? `No.${photo.no} ${t}` : `No.${photo.no}`;
+}
+
 // ===== Gallery =====
 function sortedPhotos() {
   const copy = [...photos];
@@ -210,7 +227,21 @@ function sortedPhotos() {
   return copy;
 }
 
+// 描き直しの間にページが一瞬短くなってスクロールが先頭に飛ぶのを防ぐ
+function keepScroll(container, render) {
+  const y = window.scrollY;
+  container.style.minHeight = container.offsetHeight + 'px';
+  try { render(); } finally {
+    container.style.minHeight = '';
+    if (window.scrollY !== y) window.scrollTo(0, y);
+  }
+}
+
 function renderGallery() {
+  keepScroll(gallery, renderGalleryContent);
+}
+
+function renderGalleryContent() {
   galleryRound.textContent = currentRound == null ? '' : roundLabel(currentRound);
   closedBanner.classList.toggle('hidden', !votingClosed);
   voteInstructions.classList.toggle('hidden', votingClosed);
@@ -254,10 +285,10 @@ function renderGallery() {
     card.className = 'photo-card' + (isSelected ? ' selected' : '') + (votingClosed ? ' voted-card' : '');
     card.dataset.id = photo.id;
     card.innerHTML = `
-      <img src="${photo.dataUrl}" alt="${escHtml(photo.title)}" loading="lazy" />
+      <img src="${photo.dataUrl}" alt="${escHtml(displayTitle(photo))}" loading="lazy" />
       <div class="card-body">
         <div class="card-meta">
-          <div class="card-title">${escHtml(photo.title)}</div>
+          <div class="card-title">${escHtml(displayTitle(photo))}</div>
           <div class="card-author">by ${escHtml(photo.author)}</div>
         </div>
         ${pointSelectorHtml}
@@ -353,7 +384,7 @@ function updateVotePanel() {
     chip.className = 'panel-chip' + (pts === 0 ? ' chip-unset' : '');
     chip.innerHTML = `
       <img class="panel-chip-thumb" src="${photo.dataUrl}" alt="" />
-      <span class="panel-chip-title">${escHtml(photo.title)}</span>
+      <span class="panel-chip-title">${escHtml(displayTitle(photo))}</span>
       <span class="panel-chip-pts">${pts > 0 ? pts + '点' : '得点未設定'}</span>`;
     votePanelChips.appendChild(chip);
   });
@@ -410,6 +441,10 @@ async function submitVote() {
 
 // ===== Ranking =====
 function renderRanking() {
+  keepScroll(rankingList, renderRankingContent);
+}
+
+function renderRankingContent() {
   Array.from(rankingList.children).forEach(el => {
     if (el !== rankingEmpty) el.remove();
   });
@@ -457,9 +492,9 @@ function renderRanking() {
       item.className  = `ranking-item ${rankClass}`;
       item.innerHTML  = `
         <div class="rank-badge">${medal}</div>
-        <img class="ranking-thumb" src="${photo.dataUrl}" alt="${escHtml(photo.title)}" />
+        <img class="ranking-thumb" src="${photo.dataUrl}" alt="${escHtml(displayTitle(photo))}" />
         <div class="ranking-info">
-          <div class="ranking-title">${escHtml(photo.title)}</div>
+          <div class="ranking-title">${escHtml(displayTitle(photo))}</div>
           <div class="ranking-author">by ${escHtml(photo.author)}</div>
           <div class="ranking-votes">${photo.voteCount||0} 人が投票</div>
         </div>
@@ -590,7 +625,7 @@ function historyBodyHtml(n) {
       <div class="history-row">
         <span class="history-rank">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</span>
         <img class="history-thumb" src="${p.dataUrl}" alt="" loading="lazy" />
-        <span class="history-photo-title">${escHtml(p.title)}<small> by ${escHtml(p.author)}</small></span>
+        <span class="history-photo-title">${escHtml(displayTitle(p))}<small> by ${escHtml(p.author)}</small></span>
         <span class="history-score">${p.score || 0}点</span>
       </div>`).join('')}`;
 }
@@ -609,7 +644,7 @@ async function toggleHistory(n) {
       getDocs(query(photosCol, where('round', '==', n))),
       getDocs(query(votersCol, where('round', '==', n))),
     ]);
-    const list = pSnap.docs.map(d => d.data()).sort((a, b) => (b.score || 0) - (a.score || 0));
+    const list = assignNumbers(pSnap.docs.map(d => ({ id: d.id, ...d.data() }))).sort((a, b) => (b.score || 0) - (a.score || 0));
     historyCache.set(n, { photos: list, voterCount: vSnap.size });
   } catch {
     historyCache.set(n, 'error');
@@ -671,7 +706,7 @@ function clearLocalSession() {
 let pendingFile = null;
 
 function checkSubmitReady() {
-  submitBtn.disabled = !(pendingFile && uploaderName.value.trim() && photoTitle.value.trim());
+  submitBtn.disabled = !(pendingFile && uploaderName.value.trim());   // タイトルは任意
 }
 
 uploaderName.addEventListener('input', checkSubmitReady);

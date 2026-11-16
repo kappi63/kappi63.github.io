@@ -321,7 +321,7 @@ function renderGalleryContent() {
 // ===== Selection =====
 function selectPhoto(id) {
   if (!voterName || votingClosed) return;
-  if (Object.keys(pendingBallot).length >= 5) { showToast('⚠️ 最大5枚まで選べます'); return; }
+  if (Object.keys(pendingBallot).length >= 5) { showToast('⚠️ 選べるのは5枚までです'); return; }
   pendingBallot[id] = 0;
   renderGallery();
 }
@@ -371,6 +371,24 @@ function assignPoints(id, pts) {
   updateVotePanel();
 }
 
+// ===== Ballot rules =====
+// 5枚選択が必須（写真が5枚未満のラウンドでは全部）
+const REQUIRED_PICKS = 5;
+function requiredPicks() {
+  return Math.min(REQUIRED_PICKS, photos.length);
+}
+
+// 投票できない理由の一覧（空なら投票OK）
+function ballotProblems() {
+  const entries = Object.entries(pendingBallot);
+  const req = requiredPicks();
+  const problems = [];
+  if (entries.length < req) problems.push(`あと${req - entries.length}枚選んでください（${req}枚必須）`);
+  const unset = entries.filter(([, pts]) => pts === 0).length;
+  if (unset > 0) problems.push(`${unset}枚の写真に得点をつけてください`);
+  return problems;
+}
+
 // ===== Vote Panel =====
 function updateVotePanel() {
   if (votingClosed || !voterName) { votePanel.classList.add('hidden'); return; }
@@ -382,18 +400,21 @@ function updateVotePanel() {
   votePanelName.textContent  = voterName + ' さん';
   votePanelCount.textContent = entries.length;
 
-  const allAssigned = entries.every(([, pts]) => pts > 0);
-  voteSubmitBtn.disabled = !allAssigned;
+  const req = requiredPicks();
+  votePanel.querySelector('.vote-panel-max').textContent = ` / ${req} 枚選択中`;
+  const problems = ballotProblems();
+  // 押せる状態にしておき、足りないときは押した時にアラートで知らせる
+  voteSubmitBtn.disabled = false;
+  voteSubmitBtn.classList.toggle('not-ready', problems.length > 0);
 
   let hint = votePanel.querySelector('.vote-panel-hint');
-  if (!allAssigned) {
+  if (problems.length > 0) {
     if (!hint) {
       hint = document.createElement('div');
       hint.className = 'vote-panel-hint';
       votePanel.querySelector('.vote-panel-inner').insertBefore(hint, voteSubmitBtn);
     }
-    const remaining = entries.filter(([, pts]) => pts === 0).length;
-    hint.textContent = `⚠️ あと${remaining}枚の写真に得点（1〜5点）をつけてください`;
+    hint.textContent = '⚠️ ' + problems.join('／');
   } else if (hint) {
     hint.remove();
   }
@@ -420,8 +441,13 @@ async function submitVote() {
 
   const entries = Object.entries(pendingBallot);
   if (entries.length === 0) return;
+  const req = requiredPicks();
+  if (entries.length < req) {
+    alert(`写真は${req}枚選ぶ必要があります。\n\n今は${entries.length}枚選択中です。\nあと${req - entries.length}枚選んでください。`);
+    return;
+  }
   if (!entries.every(([, pts]) => pts > 0)) {
-    showToast('⚠️ すべての写真に得点をつけてください');
+    alert('得点が付いていない写真があります。\n\n選んだすべての写真に得点（1〜5点）をつけてください。');
     return;
   }
   const ptsList = entries.map(([, pts]) => pts);

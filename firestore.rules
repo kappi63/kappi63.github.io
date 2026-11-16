@@ -1,0 +1,33 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 写真：投稿・得点更新・ラウンド番号付けはOK、削除は禁止（記録を守る）
+    match /photos/{id} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasOnly(
+                        ['author','title','dataUrl','score','voteCount','round','createdAt'])
+                    && request.resource.data.dataUrl is string
+                    && request.resource.data.dataUrl.size() < 1000000;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['score','voteCount','round']);
+      allow delete: if false;
+    }
+
+    // 投票者：投票・ラウンド番号付け・集計リセット時の削除はOK
+    match /voters/{id} {
+      allow read: if true;
+      allow create, update: if request.resource.data.keys().hasOnly(
+                        ['name','voterId','round','votedAt']);
+      allow delete: if true;
+    }
+
+    // 状態（現在のラウンド・締め切り）：決まった項目のみ書き込みOK、削除は禁止
+    match /meta/{id} {
+      allow read: if true;
+      allow create, update: if request.resource.data.keys().hasOnly(
+                        ['votingClosed','currentRound','maxRound','roundInfo']);
+      allow delete: if false;
+    }
+  }
+}

@@ -152,7 +152,7 @@ body {
   outline: none;
   flex: 1;
   min-width: 160px;
-  max-width: 260px;
+  max-width: 320px;
   transition: border-color 0.2s;
 }
 
@@ -965,6 +965,10 @@ body {
   .nav-btn { flex-direction: column; gap: 2px; padding: 8px 4px; font-size: 0.85rem; }
   .nav-icon { font-size: 1.25rem; }
   .logo { font-size: 1.1rem; }
+  .inst-name-row { gap: 6px; }
+  .inst-name-row input[type="text"] { max-width: none; min-width: 0; font-size: 0.8rem; padding: 7px 8px; }
+  .vote-instructions { padding: 12px; }
+  .main { padding-left: 14px; padding-right: 14px; }
   .gallery { grid-template-columns: 1fr; }
   .upload-card { padding: 20px; }
   .ranking-item { flex-wrap: wrap; }

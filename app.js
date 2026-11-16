@@ -269,7 +269,7 @@ function renderGalleryContent() {
       ).join('');
       pointSelectorHtml = `
         <div class="point-selector${needsPoints ? ' needs-points' : ''}">
-          <div class="point-selector-label">${needsPoints ? '⚠️ 得点を選んでください：' : '得点を選ぶ：'}</div>
+          <div class="point-selector-label">${needsPoints ? '⚠️ 得点を選んでください（同じ点数は1回まで）：' : '得点を選ぶ（同じ点数は1回まで）：'}</div>
           ${btns}
         </div>`;
     }
@@ -314,6 +314,7 @@ function renderGalleryContent() {
     });
   });
 
+  markUsedPoints();
   updateVotePanel();
 }
 
@@ -331,8 +332,28 @@ function deselectPhoto(id) {
   renderGallery();
 }
 
+// 同じ点数を別の写真にすでに付けているか（付けていればその写真のIDを返す）
+function photoWithPoints(pts, exceptId) {
+  return Object.keys(pendingBallot).find(pid => pid !== exceptId && pendingBallot[pid] === pts);
+}
+
+// 他の写真で使用済みの点数ボタンを薄く表示する
+function markUsedPoints() {
+  gallery.querySelectorAll('.point-btn').forEach(b => {
+    const used = !!photoWithPoints(parseInt(b.dataset.pts, 10), b.dataset.id);
+    b.classList.toggle('used', used);
+    b.title = used ? 'この点数は他の写真で使用済みです' : '';
+  });
+}
+
 function assignPoints(id, pts) {
   if (!(id in pendingBallot)) return;
+  const otherId = photoWithPoints(pts, id);
+  if (otherId) {
+    const other = photos.find(p => p.id === otherId);
+    alert(`${pts}点はすでに「${other ? displayTitle(other) : '別の写真'}」に付けています。\n\n同じ点数は1回しか使えません。\n別の点数を選んでください。`);
+    return;
+  }
   pendingBallot[id] = pts;
   const card = gallery.querySelector(`.photo-card[data-id="${id}"]`);
   if (card) {
@@ -343,9 +364,10 @@ function assignPoints(id, pts) {
     if (sel) {
       sel.classList.toggle('needs-points', pts === 0);
       sel.querySelector('.point-selector-label').textContent =
-        pts === 0 ? '⚠️ 得点を選んでください：' : '得点を選ぶ：';
+        pts === 0 ? '⚠️ 得点を選んでください（同じ点数は1回まで）：' : '得点を選ぶ（同じ点数は1回まで）：';
     }
   }
+  markUsedPoints();
   updateVotePanel();
 }
 
@@ -400,6 +422,11 @@ async function submitVote() {
   if (entries.length === 0) return;
   if (!entries.every(([, pts]) => pts > 0)) {
     showToast('⚠️ すべての写真に得点をつけてください');
+    return;
+  }
+  const ptsList = entries.map(([, pts]) => pts);
+  if (new Set(ptsList).size !== ptsList.length) {
+    alert('同じ点数が複数の写真に付いています。\n点数はそれぞれ違う値にしてください。');
     return;
   }
   if (nameAlreadyVoted(voterName)) {
